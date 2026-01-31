@@ -2040,16 +2040,12 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
   Widget _buildCellField(MountMapProvider provider, List<List<String>> table, int rowIndex, int colIndex) {
     if (_selectedChartId == null) return const SizedBox();
     final node = widget.asset.nodes.firstWhere((n) => n.id == _selectedChartId);
-    final key = "cell_${node.id}_${rowIndex}_${colIndex}";
+    final key = "cell_${node.id}_${rowIndex}_$colIndex";
 
     if (!_controllers.containsKey(key)) {
       _controllers[key] = TextEditingController(text: table[rowIndex][colIndex]);
     } else if (_controllers[key]!.text != table[rowIndex][colIndex]) {
-      // Logic to update text only if it changed externally (e.g. from chart click or bulk import)
-      // but avoid jumping if user is typing
-      if (!_controllers[key]!.selection.isValid || _controllers[key]!.selection.isCollapsed) {
-         // This is a rough check. Better: use a flag or check focus.
-      }
+      _controllers[key]!.text = table[rowIndex][colIndex];
     }
 
     final bool isHeader = rowIndex == 0;
