@@ -14,8 +14,6 @@ import '../models/node_model.dart';
 import '../theme/app_colors.dart';
 import '../widgets/chart_engine.dart';
 
-enum ChartViewMode { workbench, report }
-
 class ChartCanvasScreen extends StatefulWidget {
   final String chartType;
   final MindMapAsset asset;
@@ -49,29 +47,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
   bool _animate = true;
   bool _showStats = false;
   bool _showTrend = false;
-
-  // View Mode
-  ChartViewMode _viewMode = ChartViewMode.workbench;
-
-  // Document Settings
-  bool _showDocHeader = true;
-  bool _showDocAnalysis = true;
-  bool _showDocSummary = true;
-  bool _showDocDataGrid = true;
-  bool _showDocWatermark = false;
-  bool _showDocSignature = true;
-  bool _showDocStamp = true;
-  bool _showDocBorder = true;
-  bool _isLandscape = true;
-  String _docTitle = "";
-  String _docSubtitle = "PROJECTION REPORT";
-  String _docAuthor = "MountMap Executive";
-  String _docAnalysis = "Based on the analyzed data patterns, we observe significant structural hierarchies that inform our current projections.";
-  String _docLayout = "STANDARD";
-  String _docPreset = "CLASSIC"; // CLASSIC, BLUEPRINT, MODERN_DARK, LINEN
-  TextAlign _headerAlign = TextAlign.left;
-  Color _paperColor = Colors.white;
-  Offset _lightPos = const Offset(0, 0);
 
   Color _primaryColor = MountMapColors.teal;
   Color _secondaryColor = MountMapColors.violet;
@@ -123,7 +98,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
   void initState() {
     super.initState();
     _physicsController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat();
-    _docTitle = widget.asset.title;
 
     // Initialize data if empty
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -328,58 +302,16 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
     );
   }
 
-  Widget _buildDocumentFooter() {
-    final bool isDarkPaper = ThemeData.estimateBrightnessForColor(_paperColor) == Brightness.dark;
-    final Color textColor = isDarkPaper ? Colors.white : Colors.black87;
-
-    return Container(
-      margin: const EdgeInsets.only(top: 20),
-      padding: const EdgeInsets.only(top: 10),
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: textColor.withValues(alpha: 0.05))),
-      ),
-      child: Row(
-        children: [
-          Text(
-            "CONFIDENTIAL | SYSTEM GENERATED",
-            style: TextStyle(color: textColor.withValues(alpha: 0.2), fontSize: 7, fontWeight: FontWeight.bold, letterSpacing: 1),
-          ),
-          const Spacer(),
-          _buildBarcodeSimulation(textColor),
-          const SizedBox(width: 20),
-          Text(
-            "PAGE 01",
-            style: TextStyle(color: textColor.withValues(alpha: 0.2), fontSize: 7, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBarcodeSimulation(Color textColor) {
-    return Opacity(
-      opacity: 0.1,
-      child: Row(
-        children: List.generate(15, (i) => Container(
-          width: (i % 3 == 0) ? 2 : 1,
-          height: 12,
-          margin: const EdgeInsets.only(right: 1),
-          color: textColor,
-        )),
-      ),
-    );
-  }
-
   Widget _buildMenuSection(String title, List<Widget> items) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 12, bottom: 8),
+          padding: const EdgeInsets.only(left: 8, bottom: 8),
           child: Text(
             title,
-            style: TextStyle(
-              color: MountMapColors.teal.withValues(alpha: 0.7),
+            style: const TextStyle(
+              color: MountMapColors.teal,
               fontSize: 9,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.5,
@@ -457,8 +389,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          _buildViewSwitcher(),
-          const VerticalDivider(width: 20, indent: 15, endIndent: 15, color: Colors.white10),
           IconButton(
             icon: Icon(_showLeftPanel ? Icons.list_alt_rounded : Icons.table_chart_outlined,
               color: _showLeftPanel ? MountMapColors.teal : Colors.white54),
@@ -651,46 +581,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
     );
   }
 
-  Widget _buildViewSwitcher() {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _switcherBtn("WORKBENCH", ChartViewMode.workbench, Icons.edit_attributes_rounded),
-          _switcherBtn("REPORT", ChartViewMode.report, Icons.description_rounded),
-        ],
-      ),
-    );
-  }
-
-  Widget _switcherBtn(String label, ChartViewMode mode, IconData icon) {
-    final bool isActive = _viewMode == mode;
-    return InkWell(
-      onTap: () => setState(() => _viewMode = mode),
-      borderRadius: BorderRadius.circular(8),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isActive ? MountMapColors.teal.withValues(alpha: 0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 14, color: isActive ? MountMapColors.teal : Colors.white38),
-            const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.white24, fontSize: 10, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildMiddlePanel(MountMapProvider provider) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -704,12 +594,7 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
                 ),
               ),
             ),
-            _viewMode == ChartViewMode.workbench
-              ? _buildWorkbench(provider)
-              : MouseRegion(
-                  onHover: (event) => setState(() => _lightPos = event.localPosition),
-                  child: _buildReport(provider, constraints),
-                ),
+            _buildWorkbench(provider),
             // Overlays
             Positioned(
               bottom: 20,
@@ -730,80 +615,54 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
       maxScale: 5.0,
       child: Center(
         child: RepaintBoundary(
-          key: _viewMode == ChartViewMode.workbench ? _repaintKey : null,
-          child: _buildInteractiveChartCanvas(provider, isReport: false),
+          key: _repaintKey,
+          child: _buildInteractiveChartCanvas(provider),
         ),
       ),
     );
   }
 
-  Widget _buildReport(MountMapProvider provider, BoxConstraints constraints) {
-    return InteractiveViewer(
-      transformationController: _transformationController,
-      boundaryMargin: const EdgeInsets.all(double.infinity),
-      minScale: 0.1,
-      maxScale: 5.0,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 100), // Vertical spacing for scrolling feel
-          child: RepaintBoundary(
-            key: _viewMode == ChartViewMode.report ? _repaintKey : null,
-            child: _buildDocumentPaper(provider),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInteractiveChartCanvas(MountMapProvider provider, {required bool isReport}) {
+  Widget _buildInteractiveChartCanvas(MountMapProvider provider) {
     final bool isDarkBackground = ThemeData.estimateBrightnessForColor(provider.backgroundColor) == Brightness.dark;
     final Color workbenchTextColor = isDarkBackground ? Colors.white : Colors.black87;
 
-    if (isReport) {
-       // Report Mode: Render the first chart
-       final bool isDarkPaper = _docPreset == "MODERN_DARK" || _docPreset == "BLUEPRINT";
-       final Color adaptiveColor = isDarkPaper ? Colors.white : Colors.black87;
-       return _buildSingleChart(provider, widget.asset.nodes.first, true, overrideTextColor: adaptiveColor);
-    }
-
-    // WORKBENCH: Render ALL charts in a stack
     return Stack(
       clipBehavior: Clip.none,
       children: widget.asset.nodes.map((node) {
         return Positioned(
           left: node.position.dx,
           top: node.position.dy,
-          child: _buildSingleChart(provider, node, false, overrideTextColor: workbenchTextColor),
+          child: _buildSingleChart(provider, node, overrideTextColor: workbenchTextColor),
         );
       }).toList(),
     );
   }
 
-  Widget _buildSingleChart(MountMapProvider provider, NodeModel node, bool isReport, {Color? overrideTextColor}) {
+  Widget _buildSingleChart(MountMapProvider provider, NodeModel node, {Color? overrideTextColor}) {
     final String cType = node.marker ?? widget.chartType;
     final bool isSelected = _selectedChartId == node.id;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double w = isReport ? constraints.maxWidth : 800;
-        final double h = isReport ? (constraints.maxHeight == double.infinity ? 450 : constraints.maxHeight) : 600;
+        const double w = 800;
+        const double h = 600;
 
         return MouseRegion(
           onHover: (event) => setState(() => _hoverPosition = isSelected ? event.localPosition : null),
           onExit: (_) => setState(() => _hoverPosition = null),
           child: GestureDetector(
-            onPanStart: isReport ? null : (details) {
+            onPanStart: (details) {
               setState(() {
                 _selectedChartId = node.id;
               });
               _bringToFront(node.id);
             },
-            onPanUpdate: isReport ? null : (details) {
+            onPanUpdate: (details) {
               setState(() {
                 node.position += details.delta;
               });
             },
-            onTapDown: isReport ? null : (details) {
+            onTapDown: (details) {
                setState(() {
                 _selectedChartId = node.id;
               });
@@ -811,7 +670,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
             },
             onTapUp: (details) {
               final Offset localOffset = details.localPosition;
-
               final painter = ChartEnginePainter(
                 chartType: cType,
                 data: node,
@@ -843,8 +701,8 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
               decoration: BoxDecoration(
                 color: Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
-                border: isReport ? null : Border.all(color: isSelected ? MountMapColors.teal : Colors.white10, width: isSelected ? 2 : 1),
-                boxShadow: isSelected && !isReport ? [
+                border: Border.all(color: isSelected ? MountMapColors.teal : Colors.white10, width: isSelected ? 2 : 1),
+                boxShadow: isSelected ? [
                   BoxShadow(color: MountMapColors.teal.withValues(alpha: 0.15), blurRadius: 20, spreadRadius: 5)
                 ] : null,
               ),
@@ -856,8 +714,8 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
                     builder: (context, child) {
                       _updatePhysics();
                       return CustomPaint(
-                        size: Size(w, h),
-                        key: ValueKey("${cType}_${node.id}_${node.tableData.hashCode}_$isReport"),
+                        size: const Size(w, h),
+                        key: ValueKey("${cType}_${node.id}_${node.tableData.hashCode}"),
                         painter: ChartEnginePainter(
                           chartType: cType,
                           data: node,
@@ -871,29 +729,27 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
                           dynamicNodePositions: _dynamicNodePositions,
                           showStats: _showStats,
                           showTrend: _showTrend,
-                          labelColor: overrideTextColor ?? (isReport ? Colors.black87 : _labelColor),
-                          borderColor: (overrideTextColor ?? (isReport ? Colors.black87 : _borderColor)).withValues(alpha: 0.1),
+                          labelColor: overrideTextColor ?? _labelColor,
+                          borderColor: (overrideTextColor ?? _borderColor).withValues(alpha: 0.1),
                           glowColor: _glowColor,
                         ),
                       );
                     }
                   ),
-                  if (!isReport)
-                    Positioned(
-                      top: 10,
-                      right: 10,
-                      child: Row(
-                        children: [
-                          _chartMiniAction(Icons.copy_rounded, () => _duplicateChart(node)),
-                          const SizedBox(width: 8),
-                          _chartMiniAction(Icons.delete_forever_rounded, () => _deleteChart(node), isDanger: true),
-                        ],
-                      ),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Row(
+                      children: [
+                        _chartMiniAction(Icons.copy_rounded, () => _duplicateChart(node)),
+                        const SizedBox(width: 8),
+                        _chartMiniAction(Icons.delete_forever_rounded, () => _deleteChart(node), isDanger: true),
+                      ],
                     ),
-                  if (!isReport)
-                    Positioned(
-                      top: 10,
-                      left: 10,
+                  ),
+                  Positioned(
+                    top: 10,
+                    left: 10,
                       child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -922,12 +778,21 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
   }
 
   Widget _chartMiniAction(IconData icon, VoidCallback onTap, {bool isDanger = false}) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(color: isDanger ? Colors.redAccent.withValues(alpha: 0.1) : Colors.white10, shape: BoxShape.circle),
-        child: Icon(icon, size: 14, color: isDanger ? Colors.redAccent : Colors.white54),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: isDanger ? Colors.redAccent.withValues(alpha: 0.2) : Colors.black45,
+            shape: BoxShape.circle,
+            border: Border.all(color: isDanger ? Colors.redAccent.withValues(alpha: 0.5) : Colors.white10),
+          ),
+          child: Icon(icon, size: 16, color: isDanger ? Colors.redAccent : Colors.white70),
+        ),
       ),
     );
   }
@@ -955,625 +820,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
     }
     setState(() {});
     provider.triggerUpdate();
-  }
-
-  Widget _buildDocumentPaper(MountMapProvider provider) {
-    final double paperWidth = _isLandscape ? 1122 : 794;
-    final double paperHeight = _isLandscape ? 794 : 1122;
-    final double margin = _chartSettings['paperMargin'] ?? 40.0;
-
-    Color pColor = _paperColor;
-    if (_docPreset == "BLUEPRINT") pColor = const Color(0xFF003366);
-    if (_docPreset == "MODERN_DARK") pColor = const Color(0xFF0D1117);
-    if (_docPreset == "LINEN") pColor = const Color(0xFFF5F5F0);
-
-    final bool isDarkPaper = ThemeData.estimateBrightnessForColor(pColor) == Brightness.dark;
-    final Color textColor = isDarkPaper ? Colors.white : Colors.black87;
-
-    // Dynamic height based on content
-    double totalHeight = paperHeight;
-    if (widget.asset.nodes.length > 1) {
-       totalHeight = paperHeight + (widget.asset.nodes.length - 1) * 500;
-    }
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      width: paperWidth,
-      height: totalHeight,
-      decoration: BoxDecoration(
-        color: pColor,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.white10),
-        gradient: _docPreset == "CLASSIC" ? LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [pColor, Color.lerp(pColor, isDarkPaper ? Colors.black : Colors.white, 0.05)!],
-        ) : null,
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 5),
-        ],
-      ),
-      child: Stack(
-        children: [
-          if (_docPreset == "BLUEPRINT") _buildBlueprintGrid(),
-          if (_docPreset == "LINEN") _buildLinenTexture(),
-          if (_showDocBorder)
-            Positioned.fill(
-              child: Container(
-                margin: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  border: Border.all(color: textColor.withValues(alpha: 0.1), width: 1.5),
-                ),
-              ),
-            ),
-          if (_showDocWatermark) _buildWatermark(),
-          if (_showDocStamp) _buildOfficialStamp(textColor),
-          _buildDynamicLightOverlay(paperWidth, paperHeight),
-          Padding(
-            padding: EdgeInsets.all(margin),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_showDocHeader) _buildDocumentHeader(),
-                  if (_showDocSummary) _buildMetricDashboard(textColor),
-                  if (_showDocAnalysis) ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 2, child: _buildAnalysisSection()),
-                        const SizedBox(width: 20),
-                        Expanded(flex: 1, child: _buildInsightCards(textColor)),
-                      ],
-                    ),
-                  ],
-                  // Multi-Chart Display in Report
-                  ...widget.asset.nodes.map((node) {
-                    final String nodeType = node.marker ?? widget.chartType;
-                    return Container(
-                      height: 450, // More breathing room
-                      margin: const EdgeInsets.only(bottom: 40),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 3, height: 12,
-                                decoration: BoxDecoration(color: MountMapColors.teal, borderRadius: BorderRadius.circular(2)),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                "${node.text.toUpperCase()} - $nodeType",
-                                style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 15),
-                          Expanded(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: _buildSingleChart(provider, node, true, overrideTextColor: textColor),
-                                ),
-                                if (_showDocDataGrid) ...[
-                                  const SizedBox(width: 30),
-                                  Expanded(
-                                    flex: 1,
-                                    child: _buildSmallDataPreview(node, textColor),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const Divider(height: 40, thickness: 0.5, color: Colors.black12),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  if (_showDocSignature) _buildSignatureBlock(),
-                  if (_showDocHeader) _buildDocumentFooter(),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSmallDataPreview(NodeModel node, Color textColor) {
-    if (node.tableData == null) return const SizedBox();
-    final table = node.tableData!;
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: textColor.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: textColor.withValues(alpha: 0.05)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("CHART DATA", style: TextStyle(color: textColor.withValues(alpha: 0.4), fontSize: 7, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 5),
-          for (int i = 1; i < math.min(5, table.length); i++)
-             Text("${table[i][0]}: ${table[i][1]}", style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 8)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBlueprintGrid() {
-    return Positioned.fill(
-      child: Opacity(
-        opacity: 0.1,
-        child: CustomPaint(painter: GridPainter()),
-      ),
-    );
-  }
-
-  Widget _buildLinenTexture() {
-    return Positioned.fill(
-      child: Opacity(
-        opacity: 0.02,
-        child: Image.asset('assets/logo.png', repeat: ImageRepeat.repeat, scale: 5),
-      ),
-    );
-  }
-
-  Widget _buildDynamicLightOverlay(double w, double h) {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              center: Alignment(
-                (_lightPos.dx / w * 2) - 1,
-                (_lightPos.dy / h * 2) - 1,
-              ),
-              radius: 1.5,
-              colors: [
-                Colors.white.withValues(alpha: 0.05),
-                Colors.transparent,
-                Colors.black.withValues(alpha: 0.1),
-              ],
-              stops: const [0.0, 0.5, 1.0],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWatermark() {
-    return Positioned.fill(
-      child: Center(
-        child: Opacity(
-          opacity: 0.03,
-          child: Transform.rotate(
-            angle: -math.pi / 4,
-            child: const Text(
-              "CONFIDENTIAL\nMOUNTMAP EXECUTIVE",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 80, fontWeight: FontWeight.w900),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-
-  Widget _buildReferenceChart() {
-    final bool isDarkPaper = ThemeData.estimateBrightnessForColor(_paperColor) == Brightness.dark;
-    final Color textColor = isDarkPaper ? Colors.white : Colors.black87;
-
-    return Container(
-      height: 120,
-      margin: const EdgeInsets.only(top: 20),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: textColor.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: textColor.withValues(alpha: 0.05)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text("CROSS-REFERENCE", style: TextStyle(color: MountMapColors.teal, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-                const SizedBox(height: 4),
-                Text("Relative Distribution", style: TextStyle(color: textColor, fontSize: 10, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text("Secondary analytical view providing context to the primary dataset.", style: TextStyle(color: textColor.withValues(alpha: 0.4), fontSize: 7)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 15),
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              color: Colors.black12,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: CustomPaint(
-              painter: ChartEnginePainter(
-                chartType: "Rose Chart",
-                data: widget.asset.nodes.isNotEmpty ? widget.asset.nodes.first : null,
-                visualSettings: _chartSettings,
-                primaryColor: MountMapColors.teal,
-                secondaryColor: MountMapColors.violet,
-                showLabels: false,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDocDataGrid() {
-    final bool isDarkPaper = ThemeData.estimateBrightnessForColor(_paperColor) == Brightness.dark;
-    final Color textColor = isDarkPaper ? Colors.white : Colors.black87;
-
-    if (widget.asset.nodes.isEmpty || widget.asset.nodes.first.tableData == null) return const SizedBox();
-    final table = widget.asset.nodes.first.tableData!;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 4),
-          child: Text("DATA PREVIEW", style: TextStyle(color: textColor.withValues(alpha: 0.4), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: textColor.withValues(alpha: 0.05)),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Table(
-              columnWidths: const {0: FlexColumnWidth(2), 1: FlexColumnWidth(1)},
-              children: [
-                for (int i = 0; i < math.min(10, table.length); i++)
-                  TableRow(
-                    decoration: BoxDecoration(
-                      color: i == 0 ? textColor.withValues(alpha: 0.05) : (i % 2 == 0 ? textColor.withValues(alpha: 0.02) : Colors.transparent),
-                    ),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                        child: Text(table[i][0], style: TextStyle(color: textColor.withValues(alpha: i == 0 ? 0.9 : 0.6), fontSize: 9, fontWeight: i == 0 ? FontWeight.bold : FontWeight.normal)),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                        child: Text(table[i].length > 1 ? table[i][1] : "-", style: TextStyle(color: i == 0 ? textColor.withValues(alpha: 0.9) : MountMapColors.teal, fontSize: 9, fontWeight: i == 0 ? FontWeight.bold : FontWeight.bold), textAlign: TextAlign.right),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-        ),
-        if (table.length > 10)
-          Padding(
-            padding: const EdgeInsets.only(top: 8, left: 4),
-            child: Text("+ ${table.length - 10} more rows", style: TextStyle(color: textColor.withValues(alpha: 0.2), fontSize: 7, fontStyle: FontStyle.italic)),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildMetricDashboard(Color textColor) {
-    // Extract stats
-    double total = 0, maxVal = 0;
-    String topCategory = "N/A";
-    if (widget.asset.nodes.isNotEmpty && widget.asset.nodes.first.tableData != null) {
-      final table = widget.asset.nodes.first.tableData!;
-      for (int i = 1; i < table.length; i++) {
-        final val = double.tryParse(table[i].length > 1 ? table[i][1] : "0") ?? 0;
-        total += val;
-        if (val > maxVal) {
-          maxVal = val;
-          topCategory = table[i][0];
-        }
-      }
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      child: Row(
-        children: [
-          _metricCard("GROSS VOLUME", total.toStringAsFixed(0), Icons.account_balance_wallet_rounded, MountMapColors.teal, textColor),
-          const SizedBox(width: 15),
-          _metricCard("PEAK PERFORMANCE", topCategory, Icons.auto_graph_rounded, MountMapColors.violet, textColor),
-          const SizedBox(width: 15),
-          _metricCard("STATUS", "CERTIFIED", Icons.verified_user_rounded, Colors.greenAccent, textColor),
-        ],
-      ),
-    );
-  }
-
-  Widget _metricCard(String label, String value, IconData icon, Color color, Color textColor) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: textColor.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(12),
-          border: Border(left: BorderSide(color: color, width: 4)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 14, color: color),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInsightCards(Color textColor) {
-    return Column(
-      children: [
-        _insightItem("Market Lead", "Consistent growth observed in primary sectors.", Icons.tips_and_updates_rounded, MountMapColors.teal, textColor),
-        const SizedBox(height: 10),
-        _insightItem("Optimization", "Efficiency can be improved by 12% in Q4.", Icons.bolt_rounded, Colors.amberAccent, textColor),
-      ],
-    );
-  }
-
-  Widget _insightItem(String title, String desc, IconData icon, Color color, Color textColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: textColor.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: textColor.withValues(alpha: 0.05)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: Icon(icon, size: 14, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title.toUpperCase(), style: TextStyle(color: textColor, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-                const SizedBox(height: 2),
-                Text(desc, style: TextStyle(color: textColor.withValues(alpha: 0.4), fontSize: 8, height: 1.3)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOfficialStamp(Color textColor) {
-    return Positioned(
-      bottom: 60,
-      right: 40,
-      child: Opacity(
-        opacity: 0.1,
-        child: Container(
-          width: 100,
-          height: 100,
-          padding: const EdgeInsets.all(15),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: MountMapColors.teal, width: 2),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset('assets/logo.png', width: 30, color: MountMapColors.teal),
-              const SizedBox(height: 4),
-              const Text("CERTIFIED", style: TextStyle(fontSize: 6, fontWeight: FontWeight.bold, color: MountMapColors.teal)),
-              const Text("MOUNTMAP", style: TextStyle(fontSize: 5, fontWeight: FontWeight.w900, color: MountMapColors.teal)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSignatureBlock() {
-    final bool isDarkPaper = ThemeData.estimateBrightnessForColor(_paperColor) == Brightness.dark;
-    final Color textColor = isDarkPaper ? Colors.white : Colors.black87;
-
-    if (_docLayout == "MINIMAL") return const SizedBox();
-
-    return Container(
-      margin: const EdgeInsets.only(top: 30, bottom: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text("PREPARED BY", style: TextStyle(color: textColor.withValues(alpha: 0.3), fontSize: 7, fontWeight: FontWeight.bold, letterSpacing: 1)),
-              const SizedBox(height: 20),
-              Container(width: 150, height: 1, color: textColor.withValues(alpha: 0.1)),
-              const SizedBox(height: 4),
-              Text(_docAuthor.toUpperCase(), style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 9, fontWeight: FontWeight.bold)),
-              Text("Lead Data Architect", style: TextStyle(color: textColor.withValues(alpha: 0.4), fontSize: 8)),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text("VERIFIED BY", style: TextStyle(color: textColor.withValues(alpha: 0.3), fontSize: 7, fontWeight: FontWeight.bold, letterSpacing: 1)),
-              const SizedBox(height: 20),
-              Container(width: 150, height: 1, color: textColor.withValues(alpha: 0.1)),
-              const SizedBox(height: 4),
-              Text("SYSTEM AUTOMATION", style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 9, fontWeight: FontWeight.bold)),
-              Text("MountMap Engine v1.0", style: TextStyle(color: textColor.withValues(alpha: 0.4), fontSize: 8)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAnalysisSection() {
-    final bool isDarkPaper = ThemeData.estimateBrightnessForColor(_paperColor) == Brightness.dark;
-    final Color textColor = isDarkPaper ? Colors.white : Colors.black87;
-    final double bodyScale = _chartSettings['bodyTextScale'] ?? 1.0;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(25),
-      decoration: BoxDecoration(
-        color: textColor.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: textColor.withValues(alpha: 0.05)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "EXECUTIVE SUMMARY & DATA ANALYSIS",
-            style: TextStyle(
-              color: MountMapColors.teal,
-              fontSize: 10 * bodyScale,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 2
-            ),
-          ),
-          const SizedBox(height: 15),
-          Text(
-            _docAnalysis,
-            style: TextStyle(
-              color: textColor.withValues(alpha: 0.7),
-              fontSize: 13 * bodyScale,
-              height: 1.6,
-              fontStyle: FontStyle.italic,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDocumentHeader() {
-    final bool isDarkPaper = ThemeData.estimateBrightnessForColor(_paperColor) == Brightness.dark;
-    final Color textColor = isDarkPaper ? Colors.white : Colors.black87;
-    final double headerScale = _chartSettings['headerScale'] ?? 1.0;
-
-    if (_docLayout == "MINIMAL") {
-       return Container(
-         margin: const EdgeInsets.only(bottom: 30),
-         child: Row(
-           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-           children: [
-             Text(_docTitle.toUpperCase(), style: TextStyle(color: textColor, fontSize: 14 * headerScale, fontWeight: FontWeight.bold, letterSpacing: 1)),
-             Text("${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}", style: TextStyle(color: textColor.withValues(alpha: 0.3), fontSize: 10)),
-           ],
-         ),
-       );
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 30),
-      padding: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: textColor.withValues(alpha: 0.1), width: 2)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (_headerAlign == TextAlign.left) ...[
-                Image.asset('assets/logo.png', width: 40 * headerScale, height: 40 * headerScale, color: MountMapColors.teal),
-                const SizedBox(width: 15),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: _headerAlign == TextAlign.center ? CrossAxisAlignment.center : (_headerAlign == TextAlign.right ? CrossAxisAlignment.end : CrossAxisAlignment.start),
-                  children: [
-                    Text(
-                      _docTitle.toUpperCase(),
-                      style: TextStyle(color: textColor, fontSize: 24 * headerScale, fontWeight: FontWeight.w900, letterSpacing: 1.5),
-                      textAlign: _headerAlign,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _docSubtitle.toUpperCase(),
-                      style: TextStyle(color: MountMapColors.teal, fontSize: 10 * headerScale, fontWeight: FontWeight.bold, letterSpacing: 4),
-                    ),
-                  ],
-                ),
-              ),
-              if (_headerAlign == TextAlign.right) ...[
-                const SizedBox(width: 15),
-                Image.asset('assets/logo.png', width: 40 * headerScale, height: 40 * headerScale, color: MountMapColors.teal),
-              ],
-              if (_headerAlign == TextAlign.left)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      widget.chartType.toUpperCase(),
-                      style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      "DATE: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}",
-                      style: TextStyle(color: textColor.withValues(alpha: 0.3), fontSize: 8, fontWeight: FontWeight.w500),
-                    ),
-                    Text(
-                      "AUTH: ${_docAuthor.toUpperCase()}",
-                      style: TextStyle(color: textColor.withValues(alpha: 0.3), fontSize: 8, fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-          if (_headerAlign == TextAlign.center) ...[
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text("MOUNTMAP ANALYTICS", style: TextStyle(color: textColor.withValues(alpha: 0.2), fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                const SizedBox(width: 10),
-                Container(width: 4, height: 4, decoration: BoxDecoration(color: MountMapColors.teal, shape: BoxShape.circle)),
-                const SizedBox(width: 10),
-                Text("${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}", style: TextStyle(color: textColor.withValues(alpha: 0.2), fontSize: 8)),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
   }
 
   Future<void> _exportToPNG() async {
@@ -1734,7 +980,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
                 final List<String> lines = input.split('\n');
                 for (var line in lines) {
                   if (line.trim().isEmpty) continue;
-                  // Try tab first, then comma
                   if (line.contains('\t')) {
                     newTable.add(line.split('\t').map((e) => e.trim()).toList());
                   } else {
@@ -1742,8 +987,8 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
                   }
                 }
                 if (newTable.isNotEmpty) {
-                  final rootNode = widget.asset.nodes.first;
-                  provider.updatePeak(rootNode.id, tableData: newTable);
+                  final targetId = _selectedChartId ?? widget.asset.nodes.first.id;
+                  provider.updatePeak(targetId, tableData: newTable);
                   _controllers.clear();
                   Navigator.pop(context);
                 }
@@ -1759,12 +1004,10 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
   void _updatePhysics() {
     if (widget.chartType.toLowerCase() != 'hyperbolic tree') return;
 
-    // Simple Force-Directed Simulation
     final rootNode = widget.asset.nodes.first;
     final table = rootNode.tableData ?? [];
     if (table.length < 2) return;
 
-    // Repulsion
     for (var i = 1; i < table.length; i++) {
       String node = table[i][1];
       if (!_dynamicNodePositions.containsKey(node)) {
@@ -1780,28 +1023,24 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
 
         Offset delta = _dynamicNodePositions[node]! - _dynamicNodePositions[other]!;
         double distSq = delta.distanceSquared + 0.1;
-        force += delta * (500.0 / distSq); // Coulomb repulsion
+        force += delta * (500.0 / distSq);
       }
 
-      // Attraction to parent
       String parent = table[i][0];
       if (_dynamicNodePositions.containsKey(parent)) {
          Offset delta = _dynamicNodePositions[parent]! - _dynamicNodePositions[node]!;
-         force += delta * 0.05; // Hooke's Law attraction
+         force += delta * 0.05;
       } else {
-         // Attract to origin if root
          force -= _dynamicNodePositions[node]! * 0.01;
       }
 
-      // Update velocity and position
-      _nodeVelocities[node] = (_nodeVelocities[node]! + force) * 0.85; // Damping
+      _nodeVelocities[node] = (_nodeVelocities[node]! + force) * 0.85;
       _dynamicNodePositions[node] = _dynamicNodePositions[node]! + _nodeVelocities[node]!;
     }
   }
 
   void _scrollToRow(int index) {
     if (!_dataScrollController.hasClients) return;
-    // Basic approximation of row height (approx 50px)
     _dataScrollController.animateTo(
       (index * 50.0).clamp(0, _dataScrollController.position.maxScrollExtent),
       duration: const Duration(milliseconds: 300),
@@ -1851,7 +1090,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
                           onChanged: (val) {
                             setState(() {
                               row[i] = val;
-                              // Refresh controllers in table
                               _controllers.clear();
                             });
                           },
@@ -1911,7 +1149,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
             ),
             child: Row(
               children: [
-                // Row Numbering
                 Container(
                   width: 24,
                   alignment: Alignment.center,
@@ -1943,7 +1180,7 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
                     isDanger: true,
                   )
                 else
-                  const SizedBox(width: 30), // Alignment for delete button space
+                  const SizedBox(width: 30),
               ],
             ),
           );
@@ -1986,12 +1223,13 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
               leading: Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
               title: Text("Delete Column", style: TextStyle(color: Colors.white)),
               onTap: () {
-                final rootNode = widget.asset.nodes.first;
-                final table = List<List<String>>.from(rootNode.tableData!);
+                final targetId = _selectedChartId ?? widget.asset.nodes.first.id;
+                final node = widget.asset.nodes.firstWhere((n) => n.id == targetId);
+                final table = List<List<String>>.from(node.tableData!);
                 for (var row in table) {
                   if (row.length > 1) row.removeAt(colIndex);
                 }
-                provider.updatePeak(rootNode.id, tableData: table);
+                provider.updatePeak(node.id, tableData: table);
                 _controllers.clear();
                 Navigator.pop(context);
               },
@@ -2020,7 +1258,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
       final header = table.removeAt(0);
       table.sort((a, b) {
         int cmp = a[colIndex].compareTo(b[colIndex]);
-        // Try numeric comparison if possible
         double? na = double.tryParse(a[colIndex]);
         double? nb = double.tryParse(b[colIndex]);
         if (na != null && nb != null) cmp = na.compareTo(nb);
@@ -2030,7 +1267,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
       table.insert(0, header);
     });
 
-    // Clear controllers to force refresh with new order
     _controllers.clear();
     provider.triggerUpdate();
   }
@@ -2049,7 +1285,7 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
   Widget _buildCellField(MountMapProvider provider, List<List<String>> table, int rowIndex, int colIndex) {
     if (_selectedChartId == null) return const SizedBox();
     final node = widget.asset.nodes.firstWhere((n) => n.id == _selectedChartId);
-    final key = "cell_${node.id}_${rowIndex}_$colIndex";
+    final key = "cell_${node.id}_${rowIndex}_${colIndex}";
 
     if (!_controllers.containsKey(key)) {
       _controllers[key] = TextEditingController(text: table[rowIndex][colIndex]);
@@ -2112,69 +1348,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       children: [
-        _buildStyleAccordion(
-          "DOCUMENT ENGINE (REPORT MODE)",
-          Icons.description_rounded,
-          [
-            _styleSection("VISIBILITY", Icons.visibility_rounded),
-            _switchTile("Show Header/Footer", _showDocHeader, (v) => setState(() => _showDocHeader = v)),
-            _switchTile("Show Analysis Block", _showDocAnalysis, (v) => setState(() => _showDocAnalysis = v)),
-            _switchTile("Show Summary Stats", _showDocSummary, (v) => setState(() => _showDocSummary = v)),
-            _switchTile("Show Side Data Grid", _showDocDataGrid, (v) => setState(() => _showDocDataGrid = v)),
-            _switchTile("Show Watermark", _showDocWatermark, (v) => setState(() => _showDocWatermark = v)),
-            _switchTile("Show Official Stamp", _showDocStamp, (v) => setState(() => _showDocStamp = v)),
-            _switchTile("Show Page Border", _showDocBorder, (v) => setState(() => _showDocBorder = v)),
-            _switchTile("Show Signature", _showDocSignature, (v) => setState(() => _showDocSignature = v)),
-
-            const SizedBox(height: 12),
-            _styleSection("LAYOUT & TYPOGRAPHY", Icons.dashboard_customize_rounded),
-            _switchTile("Landscape Orientation", _isLandscape, (v) => setState(() => _isLandscape = v)),
-            _buildDropdown("Report Layout", _docLayout, ["STANDARD", "EXECUTIVE", "MINIMAL"], (v) => setState(() => _docLayout = v!)),
-            _buildDropdown("Document Preset", _docPreset, ["CLASSIC", "BLUEPRINT", "MODERN_DARK", "LINEN"], (v) => setState(() => _docPreset = v!)),
-            _buildDropdown("Header Alignment", _headerAlign.name, ["left", "center", "right"], (v) {
-              setState(() {
-                if (v == "left") _headerAlign = TextAlign.left;
-                if (v == "center") _headerAlign = TextAlign.center;
-                if (v == "right") _headerAlign = TextAlign.right;
-              });
-            }),
-            _buildSlider("Header Font Scale", "headerScale", min: 0.5, max: 2.0),
-            _buildSlider("Body Font Scale", "bodyTextScale", min: 0.5, max: 2.0),
-
-            const SizedBox(height: 12),
-            _styleSection("METADATA", Icons.edit_note_rounded),
-            _buildTextField("Doc Title", _docTitle, (v) => setState(() => _docTitle = v)),
-            _buildTextField("Subtitle", _docSubtitle, (v) => setState(() => _docSubtitle = v)),
-            _buildTextField("Author", _docAuthor, (v) => setState(() => _docAuthor = v)),
-            _buildTextField("Analysis/Notes", _docAnalysis, (v) => setState(() => _docAnalysis = v), maxLines: 5),
-
-            const SizedBox(height: 12),
-            _styleSection("PAPER STYLE", Icons.style_rounded),
-            _colorPicker("Paper Color", _paperColor, (c) => setState(() => _paperColor = c)),
-            _buildSlider("Internal Margin", "paperMargin", min: 10, max: 100),
-          ],
-          onReset: () => setState(() {
-            _showDocHeader = true;
-            _showDocAnalysis = true;
-            _showDocSummary = true;
-            _showDocDataGrid = true;
-            _showDocWatermark = false;
-            _showDocStamp = true;
-            _showDocBorder = true;
-            _showDocSignature = true;
-            _isLandscape = true;
-            _docLayout = "STANDARD";
-            _headerAlign = TextAlign.left;
-            _docTitle = widget.asset.title;
-            _docSubtitle = "PROJECTION REPORT";
-            _docAuthor = "MountMap Executive";
-            _docAnalysis = "Based on the analyzed data patterns, we observe significant structural hierarchies that inform our current projections.";
-            _paperColor = Colors.white;
-            _chartSettings['paperMargin'] = 40.0;
-            _chartSettings['headerScale'] = 1.0;
-            _chartSettings['bodyTextScale'] = 1.0;
-          }),
-        ),
         _buildStyleAccordion(
           "GLOBAL CONFIG",
           Icons.settings_suggest_rounded,
@@ -2421,53 +1594,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
     );
   }
 
-  Widget _buildDropdown(String label, String value, List<String> items, Function(String?) onChanged) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10)),
-          const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: DropdownButton<String>(
-              value: value,
-              items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(color: Colors.white, fontSize: 11)))).toList(),
-              onChanged: onChanged,
-              isExpanded: true,
-              underline: const SizedBox(),
-              dropdownColor: MountMapColors.darkCard,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTextField(String label, String initialValue, Function(String) onChanged, {int maxLines = 1}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: TextField(
-        controller: TextEditingController(text: initialValue),
-        onChanged: onChanged,
-        maxLines: maxLines,
-        style: const TextStyle(color: Colors.white, fontSize: 12),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(color: MountMapColors.teal.withValues(alpha: 0.5), fontSize: 10),
-          filled: true,
-          fillColor: Colors.white.withValues(alpha: 0.02),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-          isDense: true,
-        ),
-      ),
-    );
-  }
 
   Widget _buildSlider(String label, String key, {double min = 0, double max = 1, int divisions = 10}) {
     return Padding(
@@ -2714,7 +1840,7 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
           const VerticalDivider(width: 20, indent: 10, endIndent: 10, color: Colors.white10),
           _miniActionBtn(Icons.fit_screen_rounded, () {
             _autoFitToWidth(constraints);
-          }, label: "FIT WIDTH"),
+          }, label: "FIT TO WIDTH"),
         ],
       ),
     );
@@ -2851,10 +1977,9 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
   }
 
   void _autoFitToWidth(BoxConstraints constraints) {
-    final double paperWidth = _isLandscape ? 1122 : 794;
-    final double scale = (constraints.maxWidth - 80) / paperWidth;
+    const double targetWidth = 1000.0;
+    final double scale = (constraints.maxWidth - 80) / targetWidth;
 
-    // Smooth transition
     final startMatrix = _transformationController.value;
     final endMatrix = Matrix4.identity()..scale(scale);
 
@@ -2878,8 +2003,6 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
 
   void _addNewChartNode(String type) {
     final provider = Provider.of<MountMapProvider>(context, listen: false);
-
-    // Position it away from existing ones, centered on origin
     double offset = widget.asset.nodes.length * 40.0;
 
     final newNode = NodeModel(
@@ -2933,8 +2056,8 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
       child: MouseRegion(
         cursor: SystemMouseCursors.resizeLeftRight,
         child: Container(
-          width: 4,
-          color: Colors.white.withValues(alpha: 0.05),
+          width: 12, // Increased hit area
+          color: Colors.transparent, // Invisible but clickable
           child: Center(
             child: Container(
               width: 1,

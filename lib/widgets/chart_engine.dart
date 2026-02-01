@@ -44,6 +44,7 @@ class ChartEnginePainter extends CustomPainter {
     if (data == null || data!.tableData == null) return;
 
     canvas.save();
+
     final table = data!.tableData!;
     if (table.length < 2) {
       _drawPlaceholder(canvas, size, "Not enough data");

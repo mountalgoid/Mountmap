@@ -549,14 +549,11 @@ class _MountMapCanvasState extends State<MountMapCanvas> with SingleTickerProvid
       FilePickerResult? result = await FilePicker.platform.pickFiles(allowMultiple: true);
       if (result != null) {
         for (var file in result.files) {
-          String? path = file.path;
-          String name = file.name;
-          if (path != null) {
-            // Copy to permanent app storage
-            final permanentPath = await provider.saveAttachmentFile(path, name);
+          if (file.path != null) {
+            String permanentPath = await provider.saveAttachmentFile(file.path!, file.name);
             final newItem = AttachmentItem(
-              id: "${DateTime.now().millisecondsSinceEpoch}_${math.Random().nextInt(10000)}",
-              name: name,
+              id: DateTime.now().millisecondsSinceEpoch.toString() + "_" + file.name,
+              name: file.name,
               value: permanentPath,
               type: 'file'
             );
