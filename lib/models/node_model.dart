@@ -6,15 +6,21 @@ class AttachmentItem {
   String name; // Nama Tampilan (misal: "Dokumen Skripsi")
   String value; // URL atau File Path (misal: "/storage/emulated/0/Download/skripsi.pdf")
   String type; // 'link' atau 'file'
+  String? fileData; // Base64 data for export/import
 
   AttachmentItem({
     required this.id, 
     required this.name, 
     required this.value, 
-    required this.type
+    required this.type,
+    this.fileData,
   });
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'value': value, 'type': type};
+  Map<String, dynamic> toJson() {
+    final map = {'id': id, 'name': name, 'value': value, 'type': type};
+    if (fileData != null) map['fileData'] = fileData!;
+    return map;
+  }
   
   factory AttachmentItem.fromJson(Map<String, dynamic> json) {
     return AttachmentItem(
@@ -22,6 +28,7 @@ class AttachmentItem {
       name: json['name'] ?? "Untitled",
       value: json['value'] ?? "",
       type: json['type'] ?? "link",
+      fileData: json['fileData'],
     );
   }
 }

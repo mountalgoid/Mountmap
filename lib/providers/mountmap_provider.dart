@@ -570,6 +570,15 @@ class MountMapProvider extends ChangeNotifier {
   // ==========================================
   // 3. PERSISTENCE & ASSET SYNC
   // ==========================================
+
+  Future<String> saveAttachmentFile(String sourcePath, String fileName) async {
+    final docDir = await getApplicationDocumentsDirectory();
+    final String newPath = "${docDir.path}/attachments/${DateTime.now().microsecondsSinceEpoch}_$fileName";
+    final newFile = File(newPath);
+    await newFile.parent.create(recursive: true);
+    await File(sourcePath).copy(newPath);
+    return newPath;
+  }
   
   void _syncWithAsset() {
     if (_activeAsset != null) {
@@ -928,10 +937,32 @@ class MountMapProvider extends ChangeNotifier {
         bundle.add(asset);
       }
 
+      // Embedding file data for truly portable .mountflow
+      List<Map<String, dynamic>> assetsJson = [];
+      for (var a in bundle) {
+        var aJson = a.toJson();
+        if (aJson['nodes'] != null) {
+          for (var nJson in aJson['nodes']) {
+            if (nJson['attachments'] != null) {
+              for (var attachJson in nJson['attachments']) {
+                if (attachJson['type'] == 'file') {
+                  final file = File(attachJson['value']);
+                  if (await file.exists()) {
+                    final bytes = await file.readAsBytes();
+                    attachJson['fileData'] = base64Encode(bytes);
+                  }
+                }
+              }
+            }
+          }
+        }
+        assetsJson.add(aJson);
+      }
+
       Map<String, dynamic> exportData = {
         'type': asset.isFolder ? 'folder_bundle' : 'single_asset',
         'rootId': asset.id,
-        'assets': bundle.map((a) => a.toJson()).toList(),
+        'assets': assetsJson,
         'exportedAt': DateTime.now().toIso8601String(),
         'app': 'MountMap',
         'format': 'mountflow'
@@ -972,7 +1003,33 @@ class MountMapProvider extends ChangeNotifier {
 
       // First pass: Create new IDs and instantiate assets
       List<MindMapAsset> newAssets = [];
+      final docDir = await getApplicationDocumentsDirectory();
+
       for (var aJson in assetList) {
+        // Recover files from embedded data
+        if (aJson['nodes'] != null) {
+          for (var nJson in aJson['nodes']) {
+            if (nJson['attachments'] != null) {
+              for (var attachJson in nJson['attachments']) {
+                if (attachJson['type'] == 'file' && attachJson['fileData'] != null) {
+                  try {
+                    final bytes = base64Decode(attachJson['fileData']);
+                    final String fileName = attachJson['name'];
+                    final String newPath = "${docDir.path}/attachments/${DateTime.now().microsecondsSinceEpoch}_$fileName";
+                    final f = File(newPath);
+                    await f.parent.create(recursive: true);
+                    await f.writeAsBytes(bytes);
+                    attachJson['value'] = newPath;
+                    attachJson.remove('fileData'); // Important: remove after extraction
+                  } catch (e) {
+                    debugPrint("Error extracting attachment: $e");
+                  }
+                }
+              }
+            }
+          }
+        }
+
         MindMapAsset a = MindMapAsset.fromJson(aJson);
         String oldId = a.id;
         final String prefix = oldId.startsWith("chart_") ? "chart_" : "";

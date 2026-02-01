@@ -551,7 +551,9 @@ class _MountMapCanvasState extends State<MountMapCanvas> with SingleTickerProvid
         String? path = result.files.single.path;
         String name = result.files.single.name;
         if (path != null) {
-          final newItem = AttachmentItem(id: DateTime.now().millisecondsSinceEpoch.toString(), name: name, value: path, type: 'file');
+          // Copy to permanent app storage
+          final permanentPath = await provider.saveAttachmentFile(path, name);
+          final newItem = AttachmentItem(id: DateTime.now().millisecondsSinceEpoch.toString(), name: name, value: permanentPath, type: 'file');
           provider.addAttachment(node.id, newItem);
         }
       }
