@@ -1004,6 +1004,7 @@ class MountMapProvider extends ChangeNotifier {
       // First pass: Create new IDs and instantiate assets
       List<MindMapAsset> newAssets = [];
       final docDir = await getApplicationDocumentsDirectory();
+      int recoveryCount = 0;
 
       for (var aJson in assetList) {
         // Recover files from embedded data
@@ -1014,13 +1015,18 @@ class MountMapProvider extends ChangeNotifier {
                 if (attachJson['type'] == 'file' && attachJson['fileData'] != null) {
                   try {
                     final bytes = base64Decode(attachJson['fileData']);
-                    final String fileName = attachJson['name'];
-                    final String newPath = "${docDir.path}/attachments/${DateTime.now().microsecondsSinceEpoch}_$fileName";
+                    final String fileName = attachJson['name'] ?? "attachment";
+                    // Ensure unique path using both timestamp and counter
+                    final String newPath = "${docDir.path}/attachments/${DateTime.now().microsecondsSinceEpoch}_${recoveryCount++}_$fileName";
                     final f = File(newPath);
                     await f.parent.create(recursive: true);
                     await f.writeAsBytes(bytes);
-                    attachJson['value'] = newPath;
-                    attachJson.remove('fileData'); // Important: remove after extraction
+
+                    // Verify file was written successfully
+                    if (await f.exists()) {
+                      attachJson['value'] = newPath;
+                      attachJson.remove('fileData'); // Important: remove after extraction to save RAM/Prefs space
+                    }
                   } catch (e) {
                     debugPrint("Error extracting attachment: $e");
                   }
