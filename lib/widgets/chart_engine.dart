@@ -44,11 +44,12 @@ class ChartEnginePainter extends CustomPainter {
     if (data == null || data!.tableData == null) return;
 
     canvas.save();
-    canvas.clipRect(Offset.zero & size);
+    // canvas.clipRect(Offset.zero & size); // Removed to allow labels and effects to overflow
 
     final table = data!.tableData!;
     if (table.length < 2) {
       _drawPlaceholder(canvas, size, "Not enough data");
+      canvas.restore();
       return;
     }
 
@@ -116,7 +117,7 @@ class ChartEnginePainter extends CustomPainter {
     );
     tp.layout();
     tp.paint(canvas, Offset(size.width / 2 - tp.width / 2, size.height / 2 - tp.height / 2));
-    canvas.restore();
+    // canvas.restore(); // Removed to avoid unbalanced restore in try/catch blocks
   }
 
   // 1. ALLUVIAL DIAGRAM (HYPER-PROFESSIONAL N-LEVEL VERSION)
@@ -287,19 +288,24 @@ class ChartEnginePainter extends CustomPainter {
     });
   }
 
-  int _calculateNodeLevel(String node, List<Map<String, dynamic>> connections, Map<String, int> cache) {
+  int _calculateNodeLevel(String node, List<Map<String, dynamic>> connections, Map<String, int> cache, [Set<String>? visited]) {
     if (cache.containsKey(node)) return cache[node]!;
+
+    visited ??= {};
+    if (visited.contains(node)) return 0;
+    visited.add(node);
 
     int maxLevel = 0;
     for (var conn in connections) {
       if (conn['tgt'] == node) {
         // Avoid self-loops
         if (conn['src'] != node) {
-           maxLevel = math.max(maxLevel, _calculateNodeLevel(conn['src'], connections, cache) + 1);
+           maxLevel = math.max(maxLevel, _calculateNodeLevel(conn['src'], connections, cache, visited) + 1);
         }
       }
     }
 
+    visited.remove(node);
     cache[node] = maxLevel;
     return maxLevel;
   }
@@ -1742,20 +1748,25 @@ class ChartEnginePainter extends CustomPainter {
 
   int? _hitTestButterfly(Offset pos, Size size, List<List<String>> table) {
     double maxVal = 0;
+    List<double> lefts = [], rights = [];
     for (int i = 1; i < table.length; i++) {
-      maxVal = math.max(maxVal, math.max(double.tryParse(table[i][1]) ?? 0, double.tryParse(table[i][2]) ?? 0));
+      double l = double.tryParse(table[i][1]) ?? 0;
+      double r = double.tryParse(table[i][2]) ?? 0;
+      lefts.add(l); rights.add(r);
+      maxVal = math.max(maxVal, math.max(l, r));
     }
     if (maxVal == 0) maxVal = 1;
     double barHeight = visualSettings['thickness'] ?? 20.0;
     double labelWidth = visualSettings['gap'] ?? 100.0;
     double center = size.width / 2;
-    double sideWidth = (size.width - labelWidth) / 2 - 60;
-    double spacing = 18;
+    double sideWidth = (size.width - labelWidth) / 2 - 20;
+    double spacing = (size.height - 150) / (lefts.length + 1);
+    spacing = spacing.clamp(10, 40);
     double startY = 80;
 
-    for (int i = 0; i < table.length - 1; i++) {
-      double lw = ((double.tryParse(table[i+1][1]) ?? 0) / maxVal) * sideWidth;
-      double rw = ((double.tryParse(table[i+1][2]) ?? 0) / maxVal) * sideWidth;
+    for (int i = 0; i < lefts.length; i++) {
+      double lw = (lefts[i] / maxVal) * sideWidth;
+      double rw = (rights[i] / maxVal) * sideWidth;
       double y = startY + i * (barHeight + spacing);
       if (Rect.fromLTWH(center - labelWidth/2 - lw, y, lw, barHeight).contains(pos)) return i + 1;
       if (Rect.fromLTWH(center + labelWidth/2, y, rw, barHeight).contains(pos)) return i + 1;
@@ -1788,20 +1799,24 @@ class ChartEnginePainter extends CustomPainter {
     Map<int, List<String>> levelGroups = {};
     for (int l = 0; l <= maxLevel; l++) { levelGroups[l] = allNodes.where((n) => nodeLevels[n] == l).toList(); }
 
-    double columnWidth = size.width / (maxLevel + 1);
-    double nodeThickness = visualSettings['thickness'] ?? 15.0;
-    double verticalPadding = 50;
+    double paddingX = 60;
+    double columnWidth = maxLevel > 0 ? (size.width - paddingX * 2) / maxLevel : 0;
+    double nodeThickness = visualSettings['thickness'] ?? 18.0;
+    double verticalPadding = 40;
     double chartHeight = size.height - (verticalPadding * 2);
 
     Map<String, Rect> nodeRects = {};
     levelGroups.forEach((lvl, nodes) {
       double total = nodes.fold(0.0, (sum, n) => sum + math.max(nodeTotalIn[n] ?? 0, nodeTotalOut[n] ?? 0));
       double currentY = verticalPadding;
+      double availableForGaps = chartHeight * 0.15;
+      double gap = nodes.length > 1 ? availableForGaps / (nodes.length - 1) : 0;
+
       for (var n in nodes) {
         double val = math.max(nodeTotalIn[n] ?? 0, nodeTotalOut[n] ?? 0);
-        double h = (val / total) * chartHeight;
-        nodeRects[n] = Rect.fromLTWH(lvl * columnWidth + 20, currentY, nodeThickness, h);
-        currentY += h + 10;
+        double h = total > 0 ? (val / total) * (chartHeight * 0.85) : chartHeight / nodes.length;
+        nodeRects[n] = Rect.fromLTWH(paddingX + lvl * columnWidth - (lvl == maxLevel ? nodeThickness : 0), currentY, nodeThickness, h);
+        currentY += h + gap;
       }
     });
 
@@ -1857,21 +1872,25 @@ class ChartEnginePainter extends CustomPainter {
       levelGroups[l] = allNodes.where((n) => nodeLevels[n] == l).toList();
     }
 
-    double columnWidth = size.width / (maxLevel + 1.5);
-    double paddingX = columnWidth * 0.5;
-    double verticalPadding = 60;
+    double paddingX = 80;
+    double columnWidth = maxLevel > 0 ? (size.width - paddingX * 2) / maxLevel : 0;
+    double verticalPadding = 40;
     double chartHeight = size.height - (verticalPadding * 2);
 
     Map<String, Rect> nodeRects = {};
-    double nodeThickness = visualSettings['thickness'] ?? 20.0;
+    double nodeThickness = visualSettings['thickness'] ?? 24.0;
     levelGroups.forEach((lvl, nodes) {
       double total = nodes.fold(0.0, (sum, n) => sum + math.max(nodeTotalIn[n] ?? 0, nodeTotalOut[n] ?? 0));
+      int nodeCount = nodes.length;
+      double availableForGaps = chartHeight * 0.2;
+      double gap = nodeCount > 1 ? availableForGaps / (nodeCount - 1) : 0;
+
       double currentY = verticalPadding;
       for (var n in nodes) {
         double val = math.max(nodeTotalIn[n] ?? 0, nodeTotalOut[n] ?? 0);
-        double h = (val / total) * (chartHeight * 0.8);
-        nodeRects[n] = Rect.fromLTWH(paddingX + lvl * columnWidth, currentY, nodeThickness, h);
-        currentY += h + 30;
+        double h = total > 0 ? (val / total) * (chartHeight * 0.8) : chartHeight / nodes.length;
+        nodeRects[n] = Rect.fromLTWH(paddingX + lvl * columnWidth - (lvl == 0 ? 0 : (lvl == maxLevel ? nodeThickness : nodeThickness/2)), currentY, nodeThickness, h);
+        currentY += h + gap;
       }
     });
 
@@ -1959,8 +1978,9 @@ class ChartEnginePainter extends CustomPainter {
   }
   int? _hitTestMultiLevelPie(Offset pos, Size size, List<List<String>> table) {
     Offset center = Offset(size.width / 2, size.height / 2);
-    double baseRadius = visualSettings['gap'] ?? 50.0;
-    double ringThickness = visualSettings['thickness'] ?? 50.0;
+    double minDim = math.min(size.width, size.height);
+    double baseRadius = (visualSettings['gap'] ?? 50.0).clamp(10, minDim * 0.2);
+    double ringThickness = (visualSettings['thickness'] ?? 50.0).clamp(10, minDim * 0.15);
 
     double dist = (pos - center).distance;
     if (dist < baseRadius) return null;
@@ -2059,14 +2079,15 @@ class ChartEnginePainter extends CustomPainter {
   }
   int? _hitTestRadialBar(Offset pos, Size size, List<List<String>> table) {
     Offset center = Offset(size.width / 2, size.height / 2);
-    double innerRadius = 80;
-    double barThickness = visualSettings['thickness'] ?? 18.0;
+    double minDim = math.min(size.width, size.height);
+    double innerRadius = minDim * 0.2;
+    double barThickness = (visualSettings['thickness'] ?? 18.0).clamp(5, minDim * 0.08);
     double gap = 8;
 
     double dist = (pos - center).distance;
     if (dist < innerRadius - barThickness/2) return null;
 
-    int index = ((dist - (innerRadius - barThickness/2)) / (barThickness + gap)).floor();
+    int index = ((dist - (innerRadius - barThickness/2)) / (barThickness + gap)).round();
     if (index >= 0 && index < table.length - 1) {
       // Also check angle
       double angle = (pos - center).direction;

@@ -768,6 +768,7 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
 
     // WORKBENCH: Render ALL charts in a stack
     return Stack(
+      clipBehavior: Clip.none,
       children: widget.asset.nodes.map((node) {
         return Positioned(
           left: node.position.dx,
@@ -791,17 +792,24 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
           onHover: (event) => setState(() => _hoverPosition = isSelected ? event.localPosition : null),
           onExit: (_) => setState(() => _hoverPosition = null),
           child: GestureDetector(
+            onPanStart: isReport ? null : (details) {
+              setState(() {
+                _selectedChartId = node.id;
+              });
+              _bringToFront(node.id);
+            },
             onPanUpdate: isReport ? null : (details) {
               setState(() {
                 node.position += details.delta;
               });
             },
-            onTapUp: (details) {
-              setState(() {
+            onTapDown: isReport ? null : (details) {
+               setState(() {
                 _selectedChartId = node.id;
               });
               _bringToFront(node.id);
-
+            },
+            onTapUp: (details) {
               final Offset localOffset = details.localPosition;
 
               final painter = ChartEnginePainter(
@@ -841,6 +849,7 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
                 ] : null,
               ),
               child: Stack(
+                clipBehavior: Clip.none,
                 children: [
                   AnimatedBuilder(
                     animation: _physicsController,
@@ -2040,16 +2049,12 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
   Widget _buildCellField(MountMapProvider provider, List<List<String>> table, int rowIndex, int colIndex) {
     if (_selectedChartId == null) return const SizedBox();
     final node = widget.asset.nodes.firstWhere((n) => n.id == _selectedChartId);
-    final key = "cell_${node.id}_${rowIndex}_${colIndex}";
+    final key = "cell_${node.id}_${rowIndex}_$colIndex";
 
     if (!_controllers.containsKey(key)) {
       _controllers[key] = TextEditingController(text: table[rowIndex][colIndex]);
     } else if (_controllers[key]!.text != table[rowIndex][colIndex]) {
-      // Logic to update text only if it changed externally (e.g. from chart click or bulk import)
-      // but avoid jumping if user is typing
-      if (!_controllers[key]!.selection.isValid || _controllers[key]!.selection.isCollapsed) {
-         // This is a rough check. Better: use a flag or check focus.
-      }
+      _controllers[key]!.text = table[rowIndex][colIndex];
     }
 
     final bool isHeader = rowIndex == 0;
@@ -2874,13 +2879,13 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
   void _addNewChartNode(String type) {
     final provider = Provider.of<MountMapProvider>(context, listen: false);
 
-    // Position it away from existing ones
-    double offset = widget.asset.nodes.length * 100.0;
+    // Position it away from existing ones, centered on origin
+    double offset = widget.asset.nodes.length * 40.0;
 
     final newNode = NodeModel(
       id: 'chart_${DateTime.now().millisecondsSinceEpoch}',
       text: "New $type",
-      position: Offset(offset, offset),
+      position: Offset(-400 + offset, -300 + offset),
       tableData: _getInitialTableData(type),
       dataList: [],
       marker: type,
