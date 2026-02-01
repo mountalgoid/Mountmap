@@ -546,15 +546,22 @@ class _MountMapCanvasState extends State<MountMapCanvas> with SingleTickerProvid
 
   Future<void> _pickAndAddFile(NodeModel node, MountMapProvider provider) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles();
+      FilePickerResult? result = await FilePicker.platform.pickFiles(allowMultiple: true);
       if (result != null) {
-        String? path = result.files.single.path;
-        String name = result.files.single.name;
-        if (path != null) {
-          // Copy to permanent app storage
-          final permanentPath = await provider.saveAttachmentFile(path, name);
-          final newItem = AttachmentItem(id: DateTime.now().millisecondsSinceEpoch.toString(), name: name, value: permanentPath, type: 'file');
-          provider.addAttachment(node.id, newItem);
+        for (var file in result.files) {
+          String? path = file.path;
+          String name = file.name;
+          if (path != null) {
+            // Copy to permanent app storage
+            final permanentPath = await provider.saveAttachmentFile(path, name);
+            final newItem = AttachmentItem(
+              id: "${DateTime.now().millisecondsSinceEpoch}_${math.Random().nextInt(10000)}",
+              name: name,
+              value: permanentPath,
+              type: 'file'
+            );
+            provider.addAttachment(node.id, newItem);
+          }
         }
       }
     } catch (e) {

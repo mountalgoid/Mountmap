@@ -44,8 +44,6 @@ class ChartEnginePainter extends CustomPainter {
     if (data == null || data!.tableData == null) return;
 
     canvas.save();
-    // canvas.clipRect(Offset.zero & size); // Removed to allow labels and effects to overflow
-
     final table = data!.tableData!;
     if (table.length < 2) {
       _drawPlaceholder(canvas, size, "Not enough data");
@@ -117,7 +115,6 @@ class ChartEnginePainter extends CustomPainter {
     );
     tp.layout();
     tp.paint(canvas, Offset(size.width / 2 - tp.width / 2, size.height / 2 - tp.height / 2));
-    // canvas.restore(); // Removed to avoid unbalanced restore in try/catch blocks
   }
 
   // 1. ALLUVIAL DIAGRAM (HYPER-PROFESSIONAL N-LEVEL VERSION)
