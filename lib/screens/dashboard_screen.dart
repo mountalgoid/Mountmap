@@ -702,6 +702,11 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
               onTap: () { Navigator.pop(context); _showCreateDialog(context, provider, isFolder: false); },
             ),
             ListTile(
+              leading: const Icon(Icons.description_rounded, color: Colors.blueAccent),
+              title: const Text("Create DocxMap", style: TextStyle(color: Colors.white)),
+              onTap: () { Navigator.pop(context); _showCreateDialog(context, provider, isFolder: false, isDocxMap: true); },
+            ),
+            ListTile(
               leading: const Icon(Icons.bar_chart_rounded, color: Colors.purpleAccent),
               title: const Text("Create Charts", style: TextStyle(color: Colors.white)),
               onTap: () { 
@@ -894,14 +899,14 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
     );
   }
 
-  void _showCreateDialog(BuildContext context, MountMapProvider provider, {bool isFolder = false}) {
+  void _showCreateDialog(BuildContext context, MountMapProvider provider, {bool isFolder = false, bool isDocxMap = false}) {
     final TextEditingController controller = TextEditingController();
-    final Color activeColor = isFolder ? Colors.amber : MountMapColors.teal;
+    final Color activeColor = isDocxMap ? Colors.blueAccent : (isFolder ? Colors.amber : MountMapColors.teal);
 
     _showStyledDialog(
       context,
-      title: isFolder ? "New Folder" : "New MindMap",
-      icon: isFolder ? Icons.create_new_folder_rounded : Icons.add_chart_rounded,
+      title: isFolder ? "New Folder" : (isDocxMap ? "New DocxMap" : "New MindMap"),
+      icon: isFolder ? Icons.create_new_folder_rounded : (isDocxMap ? Icons.description_rounded : Icons.add_chart_rounded),
       accentColor: activeColor,
       content: TextField(
         controller: controller,
@@ -933,7 +938,11 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
           ),
           onPressed: () {
             if (controller.text.isNotEmpty) {
-              isFolder ? provider.createNewFolder(controller.text) : provider.createNewAsset(controller.text);
+              if (isFolder) {
+                provider.createNewFolder(controller.text);
+              } else {
+                provider.createNewAsset(controller.text, isDocxMap: isDocxMap);
+              }
               Navigator.pop(context);
             }
           },

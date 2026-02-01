@@ -44,6 +44,7 @@ class ChartEnginePainter extends CustomPainter {
     if (data == null || data!.tableData == null) return;
 
     canvas.save();
+    canvas.clipRect(Offset.zero & size);
 
     final table = data!.tableData!;
     if (table.length < 2) {
@@ -286,7 +287,8 @@ class ChartEnginePainter extends CustomPainter {
     });
   }
 
-  int _calculateNodeLevel(String node, List<Map<String, dynamic>> connections, Map<String, int> cache, [Set<String>? visited]) {
+  int _calculateNodeLevel(String node, List<Map<String, dynamic>> connections, Map<String, int> cache, [Set<String>? visited, int depth = 0]) {
+    if (depth > 64) return 0; // Safety for extremely deep graphs or cycles
     if (cache.containsKey(node)) return cache[node]!;
 
     visited ??= {};
@@ -298,7 +300,7 @@ class ChartEnginePainter extends CustomPainter {
       if (conn['tgt'] == node) {
         // Avoid self-loops
         if (conn['src'] != node) {
-           maxLevel = math.max(maxLevel, _calculateNodeLevel(conn['src'], connections, cache, visited) + 1);
+          maxLevel = math.max(maxLevel, _calculateNodeLevel(conn['src'], connections, cache, visited, depth + 1) + 1);
         }
       }
     }
@@ -564,10 +566,18 @@ class ChartEnginePainter extends CustomPainter {
         for (int j = 0; j < resY; j++) {
           // Check vertices against threshold
           int config = 0;
-          if (grid[i][j] >= isoVal) config |= 8;
-          if (grid[i+1][j] >= isoVal) config |= 4;
-          if (grid[i+1][j+1] >= isoVal) config |= 2;
-          if (grid[i][j+1] >= isoVal) config |= 1;
+          if (grid[i][j] >= isoVal) {
+            config |= 8;
+          }
+          if (grid[i + 1][j] >= isoVal) {
+            config |= 4;
+          }
+          if (grid[i + 1][j + 1] >= isoVal) {
+            config |= 2;
+          }
+          if (grid[i][j + 1] >= isoVal) {
+            config |= 1;
+          }
 
           if (config > 0 && config < 15) {
             // Draw lines based on config (Simplified)
@@ -659,7 +669,7 @@ class ChartEnginePainter extends CustomPainter {
         }
 
         if (showLabels && val > 0) {
-           _drawText(canvas, val.toStringAsFixed(0), Offset(x + barW/2, y - 10), Colors.white70, true);
+          _drawText(canvas, val.toStringAsFixed(0), Offset(x + barW / 2, y - 10), Colors.white70, true);
         }
       }
       _drawText(canvas, table[i][0], Offset(groupX + (groupAreaW * 0.4), size.height - 25), Colors.white38, true);
@@ -1115,26 +1125,26 @@ class ChartEnginePainter extends CustomPainter {
     if (items.isEmpty) return;
     items.sort((a, b) => (b['val'] as double).compareTo(a['val'] as double));
 
-    void squarify(List<Map<String, dynamic>> elements, List<Map<String, dynamic>> currentRow, Rect rect) {
-      if (elements.isEmpty) {
+    void squarify(int elementIndex, List<Map<String, dynamic>> currentRow, Rect rect) {
+      if (elementIndex >= items.length) {
         _layoutRow(currentRow, rect, canvas, totalVal);
         return;
       }
 
       double width = math.min(rect.width, rect.height);
-      Map<String, dynamic> next = elements.first;
+      Map<String, dynamic> next = items[elementIndex];
       List<Map<String, dynamic>> nextRow = List.from(currentRow)..add(next);
 
       if (_worstAspectRatio(currentRow, width, totalVal, rect.width * rect.height) >=
           _worstAspectRatio(nextRow, width, totalVal, rect.width * rect.height)) {
-        squarify(elements.sublist(1), nextRow, rect);
+        squarify(elementIndex + 1, nextRow, rect);
       } else {
         Rect newRect = _layoutRow(currentRow, rect, canvas, totalVal);
-        squarify(elements, [], newRect);
+        squarify(elementIndex, [], newRect);
       }
     }
 
-    squarify(items, [], Rect.fromLTWH(0, 0, size.width, size.height));
+    squarify(0, [], Rect.fromLTWH(0, 0, size.width, size.height));
   }
 
   double _worstAspectRatio(List<Map<String, dynamic>> row, double w, double total, double totalArea) {
@@ -1692,26 +1702,26 @@ class ChartEnginePainter extends CustomPainter {
     items.sort((a, b) => (b['val'] as double).compareTo(a['val'] as double));
 
     int? hitIndex;
-    void squarify(List<Map<String, dynamic>> elements, List<Map<String, dynamic>> currentRow, Rect rect) {
-      if (elements.isEmpty) {
+    void squarify(int elementIndex, List<Map<String, dynamic>> currentRow, Rect rect) {
+      if (elementIndex >= items.length) {
         _checkHitRow(currentRow, rect, totalVal, pos, (idx) => hitIndex = idx);
         return;
       }
 
       double width = math.min(rect.width, rect.height);
-      Map<String, dynamic> next = elements.first;
+      Map<String, dynamic> next = items[elementIndex];
       List<Map<String, dynamic>> nextRow = List.from(currentRow)..add(next);
 
       if (_worstAspectRatio(currentRow, width, totalVal, rect.width * rect.height) >=
           _worstAspectRatio(nextRow, width, totalVal, rect.width * rect.height)) {
-        squarify(elements.sublist(1), nextRow, rect);
+        squarify(elementIndex + 1, nextRow, rect);
       } else {
         Rect newRect = _checkHitRow(currentRow, rect, totalVal, pos, (idx) => hitIndex = idx);
-        squarify(elements, [], newRect);
+        squarify(elementIndex, [], newRect);
       }
     }
 
-    squarify(items, [], Rect.fromLTWH(0, 0, size.width, size.height));
+    squarify(0, [], Rect.fromLTWH(0, 0, size.width, size.height));
     return hitIndex;
   }
 
@@ -1985,8 +1995,13 @@ class ChartEnginePainter extends CustomPainter {
 
     double angle = (pos - center).direction;
     if (angle < -math.pi / 2) angle += 2 * math.pi;
-    double targetAngle = angle + math.pi/2;
-    if (targetAngle > 2 * math.pi) targetAngle -= 2 * math.pi;
+    double targetAngle = angle + math.pi / 2;
+    while (targetAngle < 0) {
+      targetAngle += 2 * math.pi;
+    }
+    while (targetAngle > 2 * math.pi) {
+      targetAngle -= 2 * math.pi;
+    }
 
     final tree = <String, List<Map<String, dynamic>>>{};
     final values = <String, double>{};
@@ -2015,9 +2030,13 @@ class ChartEnginePainter extends CustomPainter {
       double rInner = baseRadius + depth * ringThickness;
       double rOuter = rInner + ringThickness;
 
-      double normStart = startAngle + math.pi/2;
-      while (normStart < 0) normStart += 2 * math.pi;
-      while (normStart > 2 * math.pi) normStart -= 2 * math.pi;
+      double normStart = startAngle + math.pi / 2;
+      while (normStart < 0) {
+        normStart += 2 * math.pi;
+      }
+      while (normStart > 2 * math.pi) {
+        normStart -= 2 * math.pi;
+      }
 
       // Check if targetAngle is within [normStart, normStart + sweep]
       // Account for wrap-around
@@ -2030,10 +2049,13 @@ class ChartEnginePainter extends CustomPainter {
       }
 
       if (dist >= rInner && dist <= rOuter && angleMatch) {
-         // Found segment! Find row index.
-         for (int i = 1; i < table.length; i++) {
-           if (table[i][1] == node) { hitIndex = i; break; }
-         }
+        // Found segment! Find row index.
+        for (int i = 1; i < table.length; i++) {
+          if (table[i][1] == node) {
+            hitIndex = i;
+            break;
+          }
+        }
       }
       if (hitIndex != null) return;
 
@@ -2134,7 +2156,9 @@ class ChartEnginePainter extends CustomPainter {
       if (path.contains(pos)) {
         // Return the first matching row index for this category
         for (int rowIdx = 1; rowIdx < table.length; rowIdx++) {
-          if (table[rowIdx][1] == cat) return rowIdx;
+          if (table[rowIdx][1] == cat) {
+            return rowIdx;
+          }
         }
       }
       lowerY = upperY;
@@ -2165,7 +2189,8 @@ class ChartEnginePainter extends CustomPainter {
         // Find row index for this node
         for (int i = 1; i < table.length; i++) {
           if (table[i][1] == name || (r == 0 && table[i][0] == name)) {
-             hitIndex = i; break;
+            hitIndex = i;
+            break;
           }
         }
       }

@@ -10,8 +10,9 @@ class CanvasPainter extends CustomPainter {
   final List<NodeModel> nodes;
   final AppThemeMode themeMode;
   final String? selectedNodeId;
+  final bool isDocxMap;
 
-  CanvasPainter(this.nodes, this.themeMode, {this.selectedNodeId});
+  CanvasPainter(this.nodes, this.themeMode, {this.selectedNodeId, this.isDocxMap = false});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -125,10 +126,18 @@ class CanvasPainter extends CustomPainter {
       cp2 = Offset(end.dx + cpDist, end.dy);
     }
 
-    path.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, end.dx, end.dy);
+    if (isDocxMap) {
+      path.lineTo(end.dx, end.dy);
+      paint.shader = null;
+      paint.color = Colors.white;
+      paint.strokeWidth = 2.0;
+      _drawArrowHead(canvas, start, end, paint);
+    } else {
+      path.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, end.dx, end.dy);
 
-    // Draw Arrow Head for Flowchart look
-    _drawArrowHead(canvas, cp2, end, paint);
+      // Draw Arrow Head for Flowchart look
+      _drawArrowHead(canvas, cp2, end, paint);
+    }
 
     // 1. Draw Subtle Glow/Shadow for ALL lines (Depth effect)
     final baseGlowPaint = Paint()
@@ -143,7 +152,11 @@ class CanvasPainter extends CustomPainter {
 
     // Draw Connection Label if exists
     if (endNode.connectionLabel != null && endNode.connectionLabel!.isNotEmpty) {
-      _drawConnectionLabel(canvas, start, cp1, cp2, end, endNode.connectionLabel!);
+      if (isDocxMap) {
+        _drawConnectionLabel(canvas, start, start, end, end, endNode.connectionLabel!);
+      } else {
+        _drawConnectionLabel(canvas, start, cp1, cp2, end, endNode.connectionLabel!);
+      }
     }
 
     if (isConnectedToSelected) {

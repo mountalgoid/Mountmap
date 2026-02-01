@@ -11,6 +11,7 @@ class NodeUI extends StatelessWidget {
   final bool isDragging;
   final bool isSelected;
   final bool isConnecting;
+  final bool isDocxMap;
 
   const NodeUI({
     super.key,
@@ -20,6 +21,7 @@ class NodeUI extends StatelessWidget {
     this.isDragging = false,
     this.isSelected = false,
     this.isConnecting = false,
+    this.isDocxMap = false,
   });
 
   @override
@@ -66,14 +68,14 @@ class NodeUI extends StatelessWidget {
     required Color borderColor,
     required Color cardColor,
   }) {
-    double radius = 12;
+    double radius = isDocxMap ? 2 : 12;
     if (node.shapeType == 'circle') radius = 1000;
     if (node.shapeType == 'oval') radius = 30;
 
     // Custom constraints for special diagrams
-    double? maxWidth = 260;
-    double? minWidth = 100;
-    EdgeInsets padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 12);
+    double? maxWidth = isDocxMap ? 200 : 260;
+    double? minWidth = isDocxMap ? 180 : 100;
+    EdgeInsets padding = isDocxMap ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 16, vertical: 12);
 
     if (node.shapeType == 'table') {
       maxWidth = 600;
@@ -185,6 +187,8 @@ class NodeUI extends StatelessWidget {
   }
 
   Widget _buildBodyContent(Color textColor, Color iconColor, bool isSelected) {
+    if (isDocxMap) return _buildDocxContent(textColor, isSelected);
+
     // Specialized Rendering for Diagrams
     if (node.shapeType == 'table') return _buildTable(textColor, isSelected);
     if (node.shapeType == 'triangle') return _buildTrianglePyramid(textColor, isSelected);
@@ -409,6 +413,68 @@ class NodeUI extends StatelessWidget {
             child: Text(text, textAlign: TextAlign.center, style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontSize: 12 + (levels.length - idx).toDouble())),
           );
         }),
+      ],
+    );
+  }
+
+  Widget _buildDocxContent(Color textColor, bool isSelected) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header bar like in the image
+        Container(
+          height: 24,
+          decoration: const BoxDecoration(
+            color: Color(0xFF0047AB), // Professional blue
+            borderRadius: BorderRadius.vertical(top: Radius.circular(2)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          alignment: Alignment.centerLeft,
+          child: Text(
+            node.marker ?? "DOC",
+            style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                node.text,
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              if (node.description != null && node.description!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  node.description!,
+                  style: TextStyle(
+                    color: textColor.withValues(alpha: 0.7),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+              // Dummy lines to match the image style
+              const SizedBox(height: 12),
+              ...List.generate(3, (index) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Container(
+                  height: 1.5,
+                  decoration: BoxDecoration(
+                    color: textColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              )),
+            ],
+          ),
+        ),
       ],
     );
   }

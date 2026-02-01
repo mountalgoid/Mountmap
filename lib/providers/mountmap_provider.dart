@@ -683,15 +683,19 @@ class MountMapProvider extends ChangeNotifier {
     }).toList();
   }
 
-  void createNewAsset(String title) {
-    _assets.insert(0, MindMapAsset(
+  void createNewAsset(String title, {bool isDocxMap = false}) {
+    final asset = MindMapAsset(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       text: title,
       createdAt: DateTime.now(),
       lastModified: DateTime.now(),
       parentId: _currentFolderId,
       isFolder: false,
-    ));
+    );
+    if (isDocxMap) {
+      asset.folderName = "DocxMap";
+    }
+    _assets.insert(0, asset);
     _saveToDisk();
     notifyListeners();
   }
