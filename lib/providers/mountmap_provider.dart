@@ -198,7 +198,6 @@ class MountMapProvider extends ChangeNotifier {
       if (marker != null) _nodes[index].marker = marker;
       if (linkedAssetId != null) _nodes[index].linkedAssetId = linkedAssetId;
       if (attachments != null) _nodes[index].attachments = attachments;
-      if (position != null) _nodes[index].position = position;
       if (alertMessage != null) _nodes[index].alertMessage = alertMessage;
       if (alertDate != null) _nodes[index].alertDate = alertDate;
       if (alertEnabled != null) _nodes[index].alertEnabled = alertEnabled;
