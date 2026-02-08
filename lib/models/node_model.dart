@@ -109,6 +109,7 @@ class NodeModel {
   bool isIconGradient;
   String? nodeNumber;
   String shapeType; // 'box', 'circle', 'diamond', 'hexagon'
+  bool isLocked;
   String? connectionLabel; // Label untuk garis ke parent (misal: "Yes", "No")
   List<List<String>>? tableData; // Untuk Diagram Tabel
   List<String>? dataList; // Untuk Diagram Piramida/Timeline
@@ -137,6 +138,7 @@ class NodeModel {
     this.isIconGradient = false,
     this.nodeNumber,
     this.shapeType = 'box',
+    this.isLocked = false,
     this.connectionLabel,
     this.tableData,
     this.dataList,
@@ -211,6 +213,7 @@ class NodeModel {
       isIconGradient: json['isIconGradient'] ?? false,
       nodeNumber: json['nodeNumber'],
       shapeType: json['shapeType'] ?? 'box',
+      isLocked: json['isLocked'] ?? false,
       connectionLabel: json['connectionLabel'],
       tableData: json['tableData'] != null
           ? (json['tableData'] as List).map((row) => List<String>.from(row)).toList()
@@ -247,6 +250,7 @@ class NodeModel {
       'isIconGradient': isIconGradient,
       'nodeNumber': nodeNumber,
       'shapeType': shapeType,
+      'isLocked': isLocked,
       'connectionLabel': connectionLabel,
       'tableData': tableData,
       'dataList': dataList,

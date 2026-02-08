@@ -352,6 +352,9 @@ class NodeUI extends StatelessWidget {
               isSpecial: true,
               color: node.hasActiveAlert ? Colors.orangeAccent : Colors.redAccent,
             ),
+
+          if (node.isLocked)
+            _statusIcon(Icons.lock_rounded, isSpecial: true, color: Colors.redAccent),
         ],
       ),
     );
@@ -372,7 +375,8 @@ class NodeUI extends StatelessWidget {
     return (node.note != null && node.note!.isNotEmpty) ||
         node.attachments.isNotEmpty ||
         node.linkedAssetId != null ||
-        (node.alertEnabled && node.alertDate != null);
+        (node.alertEnabled && node.alertDate != null) ||
+        node.isLocked;
   }
 
   // --- Specialized Diagram Builders ---
@@ -490,6 +494,11 @@ class NodeUI extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (node.isLocked)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 6),
+                      child: Icon(Icons.lock_rounded, color: Colors.white, size: 12),
+                    ),
                   if (node.attachments.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

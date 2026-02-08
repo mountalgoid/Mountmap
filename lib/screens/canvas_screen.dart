@@ -296,6 +296,11 @@ class _MountMapCanvasState extends State<MountMapCanvas> with SingleTickerProvid
                 _menuIconBtn(provider, Icons.account_tree_rounded, "Flow", Colors.deepOrangeAccent,
                   () => _handleShapeMenu(node, provider)),
 
+                _menuIconBtn(provider, node.isLocked ? Icons.lock_rounded : Icons.lock_open_rounded, "Lock", node.isLocked ? Colors.redAccent : Colors.grey, () {
+                  provider.updatePeak(node.id, isLocked: !node.isLocked);
+                  Navigator.pop(context);
+                }),
+
                 _menuIconBtn(provider, Icons.linear_scale_rounded, "Line", Colors.limeAccent,
                   () => _handleLineLabelMenu(node, provider)),
 
@@ -1781,6 +1786,16 @@ class _MountMapCanvasState extends State<MountMapCanvas> with SingleTickerProvid
                     Future.delayed(const Duration(milliseconds: 150), () { _focusOnNodes(); });
                   }, isAccent: true),
                   _divider(provider),
+                  _navButton(provider, provider.nodes.every((n) => n.isLocked) ? Icons.lock_rounded : Icons.lock_open_rounded, () {
+                    bool allLocked = provider.nodes.every((n) => n.isLocked);
+                    provider.toggleAllNodesLock(!allLocked);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(allLocked ? "🔓 Layout Unlocked" : "🔒 Layout Locked"),
+                      duration: const Duration(milliseconds: 800),
+                      backgroundColor: allLocked ? Colors.orangeAccent : Colors.redAccent,
+                    ));
+                  }, isAccent: true),
+                  _divider(provider),
                   _navButton(provider, Icons.more_horiz_rounded, () {
                     if (provider.selectedNodeId != null) {
                       final node = provider.nodes.firstWhere((n) => n.id == provider.selectedNodeId);
@@ -2035,6 +2050,8 @@ class _MountMapCanvasState extends State<MountMapCanvas> with SingleTickerProvid
             const Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.link_rounded, size: 12, color: MountMapColors.teal)),
           if (node.alertEnabled && node.alertDate != null)
              Padding(padding: const EdgeInsets.only(right: 4), child: Icon(node.hasActiveAlert ? Icons.notifications_active : Icons.notification_important, size: 12, color: Colors.orangeAccent)),
+          if (node.isLocked)
+             const Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.lock_rounded, size: 12, color: Colors.redAccent)),
         ],
       ),
     );
