@@ -182,6 +182,7 @@ class MountMapProvider extends ChangeNotifier {
     bool? isIconGradient,
     String? nodeNumber,
     String? shapeType,
+    bool? isLocked,
     String? connectionLabel,
     List<String>? crossConnections,
     List<List<String>>? tableData,
@@ -209,14 +210,27 @@ class MountMapProvider extends ChangeNotifier {
       if (isIconGradient != null) _nodes[index].isIconGradient = isIconGradient;
       if (nodeNumber != null) _nodes[index].nodeNumber = nodeNumber == "-clear-" ? null : nodeNumber;
       if (shapeType != null) _nodes[index].shapeType = shapeType;
+      if (isLocked != null) _nodes[index].isLocked = isLocked;
       if (connectionLabel != null) _nodes[index].connectionLabel = connectionLabel == "-clear-" ? null : connectionLabel;
       if (crossConnections != null) _nodes[index].crossConnections = crossConnections;
+
       if (tableData != null) _nodes[index].tableData = tableData;
+
+      // Hanya update posisi jika node TIDAK sedang dikunci
+      if (position != null && !_nodes[index].isLocked) _nodes[index].position = position;
       if (dataList != null) _nodes[index].dataList = dataList;
       if (descriptionBlocks != null) _nodes[index].descriptionBlocks = descriptionBlocks;
 
       _syncWithAsset();
     }
+  }
+
+  void toggleAllNodesLock(bool lock) {
+    for (var node in _nodes) {
+      node.isLocked = lock;
+    }
+    _syncWithAsset();
+    notifyListeners();
   }
 
   void toggleCrossConnection(String fromId, String toId) {
