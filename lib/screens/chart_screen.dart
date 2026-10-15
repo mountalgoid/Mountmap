@@ -185,13 +185,34 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
       await provider.exportToMountFlow(widget.asset);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Chart exported as .mountflow successfully!")),
+          SnackBar(
+            content: const Text("Chart exported as .mountflow successfully!"),
+            duration: const Duration(days: 365),
+            action: SnackBarAction(
+              label: 'CLOSE',
+              textColor: Colors.amberAccent,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Export failed: $e"), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text("Export failed: $e"),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(days: 365),
+            action: SnackBarAction(
+              label: 'CLOSE',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
         );
       }
     } finally {
@@ -213,7 +234,17 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
           await provider.importFromMountFlow(file);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Data imported from .mountflow successfully!")),
+              SnackBar(
+                content: const Text("Data imported from .mountflow successfully!"),
+                duration: const Duration(days: 365),
+                action: SnackBarAction(
+                  label: 'CLOSE',
+                  textColor: Colors.amberAccent,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  },
+                ),
+              ),
             );
           }
         } else {
@@ -223,7 +254,18 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Import failed: $e"), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text("Import failed: $e"),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(days: 365),
+            action: SnackBarAction(
+              label: 'CLOSE',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
         );
       }
     } finally {
@@ -863,9 +905,24 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Export Error: $e"), backgroundColor: Colors.redAccent),
-        );
+        if (e.toString().contains('Share callback error') || e.toString().contains('prior share-sheet')) {
+          debugPrint("Share callback info ignored: $e");
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Export Error: $e"),
+              backgroundColor: Colors.redAccent,
+              duration: const Duration(days: 365),
+              action: SnackBarAction(
+                label: 'CLOSE',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        }
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);
