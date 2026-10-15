@@ -12,7 +12,9 @@ class AestheticToast {
     bool persistent = false,
     Duration? duration,
   }) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    try {
+      ScaffoldMessenger.of(context).clearSnackBars();
+    } catch (_) {}
 
     Color accentColor;
     IconData iconData;
@@ -50,23 +52,23 @@ class AestheticToast {
         padding: EdgeInsets.zero,
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         content: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
           decoration: BoxDecoration(
             color: const Color(0xFF161B22),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: accentColor.withValues(alpha: 0.5),
+              color: accentColor.withValues(alpha: 0.6),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.45),
+                color: Colors.black.withValues(alpha: 0.5),
                 blurRadius: 18,
                 spreadRadius: 2,
                 offset: const Offset(0, 6),
               ),
               BoxShadow(
-                color: accentColor.withValues(alpha: 0.15),
+                color: accentColor.withValues(alpha: 0.2),
                 blurRadius: 12,
                 spreadRadius: 0,
                 offset: const Offset(0, 2),
@@ -80,10 +82,10 @@ class AestheticToast {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.15),
+                  color: accentColor.withValues(alpha: 0.18),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: accentColor.withValues(alpha: 0.3),
+                    color: accentColor.withValues(alpha: 0.35),
                     width: 1,
                   ),
                 ),
@@ -93,7 +95,7 @@ class AestheticToast {
                   size: 20,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
 
               // Title and Message
               Expanded(
@@ -110,7 +112,7 @@ class AestheticToast {
                         letterSpacing: 1.2,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 2),
                     Text(
                       message,
                       style: const TextStyle(
@@ -124,24 +126,31 @@ class AestheticToast {
                 ),
               ),
 
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
 
-              // Close (X) Button
-              InkWell(
+              // Responsive Touch Target Close (X) Button
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  try {
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                  } catch (e) {
+                    debugPrint("Error closing toast: $e");
+                  }
                 },
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.close_rounded,
-                    color: Colors.white70,
-                    size: 16,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                   ),
                 ),
               ),
