@@ -1173,7 +1173,12 @@ class MountMapProvider extends ChangeNotifier {
       await file.writeAsString(jsonString);
       await Share.shareXFiles([XFile(file.path)], text: 'MountFlow Export: ${asset.title}');
     } catch (e) {
-      debugPrint("Export Error: $e");
+      if (e.toString().contains('Share callback error') || e.toString().contains('prior share-sheet')) {
+        debugPrint("Share callback info ignored: $e");
+      } else {
+        debugPrint("Export Error: $e");
+        rethrow;
+      }
     }
   }
 
@@ -1449,6 +1454,10 @@ class MountMapProvider extends ChangeNotifier {
 
       await Share.shareXFiles([XFile(outputFile.path)], text: 'MountPack Export: ${asset.title}');
     } catch (e) {
+      if (e.toString().contains('Share callback error') || e.toString().contains('prior share-sheet')) {
+        debugPrint("Share callback info ignored: $e");
+        return;
+      }
       if (outputFile != null && await outputFile.exists()) {
         await outputFile.delete();
       }

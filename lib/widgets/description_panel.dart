@@ -199,6 +199,163 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
   String? _editingBlockId;
   int _tableGeneration = 0;
 
+  Future<Directory> _getPublicDownloadDirectory() async {
+    if (Platform.isAndroid) {
+      final downloadDir = Directory('/storage/emulated/0/Download');
+      if (await downloadDir.exists()) {
+        return downloadDir;
+      }
+    }
+    return await getApplicationDocumentsDirectory();
+  }
+
+  Future<void> _saveFileToDevice(String filePath, String originalName) async {
+    try {
+      final sourceFile = File(filePath);
+      if (!await sourceFile.exists()) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("File asal tidak ditemukan di penyimpanan lokal"),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+
+      final targetDir = await _getPublicDownloadDirectory();
+      final safeName = originalName.isEmpty ? sourceFile.path.split('/').last : originalName;
+      String destPath = "${targetDir.path}/$safeName";
+
+      if (await File(destPath).exists()) {
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final nameParts = safeName.split('.');
+        if (nameParts.length > 1) {
+          final ext = nameParts.last;
+          final base = nameParts.sublist(0, nameParts.length - 1).join('.');
+          destPath = "${targetDir.path}/${base}_$timestamp.$ext";
+        } else {
+          destPath = "${targetDir.path}/${safeName}_$timestamp";
+        }
+      }
+
+      await sourceFile.copy(destPath);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Berhasil menyimpan file ke: $destPath"),
+          backgroundColor: MountMapColors.teal,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Gagal menyimpan file: $e"),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveAllFilesToDevice(NodeModel node) async {
+    final List<({String path, String name})> filesToSave = [];
+
+    for (var item in node.attachments) {
+      if (item.type == 'file' && item.value.isNotEmpty) {
+        filesToSave.add((path: item.value, name: item.name));
+      }
+    }
+
+    for (var block in node.descriptionBlocks) {
+      if (block.type == BlockType.attachment && block.attachment != null) {
+        final item = block.attachment!;
+        if (item.type == 'file' && item.value.isNotEmpty) {
+          filesToSave.add((path: item.value, name: item.name));
+        }
+      }
+      if ((block.type == BlockType.table || block.type == BlockType.chart) && block.tableData != null) {
+        for (var row in block.tableData!) {
+          for (var cell in row) {
+            if (cell.startsWith(DescriptionBlock.tableFilePrefix)) {
+              final parsed = _parseTableAttachmentValue(cell);
+              if (parsed.value.isNotEmpty) {
+                filesToSave.add((path: parsed.value, name: parsed.name));
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (filesToSave.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Tidak ada file lampiran yang ditemukan di deskripsi ini."),
+        ),
+      );
+      return;
+    }
+
+    int successCount = 0;
+    int failCount = 0;
+    final targetDir = await _getPublicDownloadDirectory();
+
+    for (var fileItem in filesToSave) {
+      try {
+        final sourceFile = File(fileItem.path);
+        if (await sourceFile.exists()) {
+          final safeName = fileItem.name.isEmpty ? sourceFile.path.split('/').last : fileItem.name;
+          String destPath = "${targetDir.path}/$safeName";
+
+          if (await File(destPath).exists()) {
+            final timestamp = DateTime.now().millisecondsSinceEpoch;
+            final nameParts = safeName.split('.');
+            if (nameParts.length > 1) {
+              final ext = nameParts.last;
+              final base = nameParts.sublist(0, nameParts.length - 1).join('.');
+              destPath = "${targetDir.path}/${base}_$timestamp.$ext";
+            } else {
+              destPath = "${targetDir.path}/${safeName}_$timestamp";
+            }
+          }
+
+          await sourceFile.copy(destPath);
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (e) {
+        failCount++;
+      }
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Berhasil menyimpan $successCount file ke ${targetDir.path}${failCount > 0 ? ' ($failCount gagal)' : ''}"),
+        backgroundColor: MountMapColors.teal,
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          },
+        ),
+      ),
+    );
+  }
+
   // Embedded chart interactive settings state per block
   final Map<String, Map<String, dynamic>> _chartInteractiveState = {};
 
@@ -1300,6 +1457,11 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                                                 _showAddLinkForTableCell(provider, data, rIdx, cIdx, setModalState);
                                                 return;
                                               }
+                                              if (value == 'save_to_device' && isAttachmentCell && colEntry.value.startsWith(DescriptionBlock.tableFilePrefix)) {
+                                                final parsed = _parseTableAttachmentValue(colEntry.value);
+                                                await _saveFileToDevice(parsed.value, parsed.name);
+                                                return;
+                                              }
                                               if (value == 'open' && isAttachmentCell) {
                                                 await _openTableCellValue(colEntry.value);
                                                 return;
@@ -1323,6 +1485,17 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                                                       Icon(Icons.attach_file_rounded, size: 16),
                                                       SizedBox(width: 8),
                                                       Text('Attach File'),
+                                                    ],
+                                                  ),
+                                                ),
+                                              if (!isChart && rIdx != 0 && isAttachmentCell && colEntry.value.startsWith(DescriptionBlock.tableFilePrefix))
+                                                const PopupMenuItem(
+                                                  value: 'save_to_device',
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.download_rounded, size: 16, color: MountMapColors.teal),
+                                                      SizedBox(width: 8),
+                                                      Text('Simpan ke Perangkat'),
                                                     ],
                                                   ),
                                                 ),
@@ -1430,7 +1603,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildHeader(node.text, textColor, isDark),
+          _buildHeader(node, textColor, isDark),
           Flexible(
             child: ReorderableListView(
               padding: const EdgeInsets.all(24),
@@ -1471,13 +1644,13 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
               ],
             ),
           ),
-          _buildFooter(provider),
+          _buildFooter(provider, node),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(String title, Color textColor, bool isDark) {
+  Widget _buildHeader(NodeModel node, Color textColor, bool isDark) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 16, 20),
       decoration: BoxDecoration(
@@ -1497,7 +1670,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
         children: [
           Expanded(
             child: Text(
-              title.toUpperCase(),
+              node.text.toUpperCase(),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
@@ -1506,6 +1679,11 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
               ),
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.download_for_offline_rounded, color: Colors.white),
+            tooltip: "Simpan Semua File Deskripsi ke Perangkat",
+            onPressed: () => _saveAllFilesToDevice(node),
           ),
           IconButton(
             icon: const Icon(Icons.close_rounded, color: Colors.white),
@@ -1697,7 +1875,18 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
         leading: Icon(icon, color: iconColor, size: 20),
         title: Text(item.name, style: TextStyle(color: provider.textColor, fontSize: 13, fontWeight: FontWeight.w600)),
         subtitle: Text(isLink ? item.value : "LOCAL FILE", style: TextStyle(color: provider.textColor.withValues(alpha: 0.4), fontSize: 9), maxLines: 1, overflow: TextOverflow.ellipsis),
-        trailing: Icon(Icons.open_in_new_rounded, size: 14, color: provider.textColor.withValues(alpha: 0.3)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!isLink)
+              IconButton(
+                icon: const Icon(Icons.download_rounded, size: 18, color: MountMapColors.teal),
+                tooltip: "Simpan ke Perangkat",
+                onPressed: () => _saveFileToDevice(item.value, item.name),
+              ),
+            Icon(Icons.open_in_new_rounded, size: 14, color: provider.textColor.withValues(alpha: 0.3)),
+          ],
+        ),
       ),
     );
   }
@@ -1802,11 +1991,23 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                               style: TextStyle(color: textColor, fontSize: 12),
                             ),
                           ),
-                          if (_isTableAttachmentValue(cell))
+                          if (_isTableAttachmentValue(cell)) ...[
                             Padding(
                               padding: const EdgeInsets.only(left: 4),
                               child: Icon(Icons.open_in_new_rounded, size: 12, color: MountMapColors.teal),
                             ),
+                            if (cell.startsWith(DescriptionBlock.tableFilePrefix))
+                              IconButton(
+                                icon: const Icon(Icons.download_rounded, size: 14, color: MountMapColors.teal),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                tooltip: "Simpan ke Perangkat",
+                                onPressed: () {
+                                  final parsed = _parseTableAttachmentValue(cell);
+                                  _saveFileToDevice(parsed.value, parsed.name);
+                                },
+                              ),
+                          ],
                         ],
                       ),
                     ),
@@ -2171,7 +2372,23 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       await Share.shareXFiles([XFile(file.path)], text: 'MountMap Chart Export: $chartName');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export PNG error: $e')));
+      if (e.toString().contains('Share callback error') || e.toString().contains('prior share-sheet')) {
+        debugPrint("Share callback info ignored: $e");
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export PNG error: $e'),
+            duration: const Duration(days: 365),
+            action: SnackBarAction(
+              label: 'CLOSE',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -2427,7 +2644,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
-  Widget _buildFooter(MountMapProvider provider) {
+  Widget _buildFooter(MountMapProvider provider, NodeModel node) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       decoration: BoxDecoration(
@@ -2445,6 +2662,8 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             _buildActionButton('Add Table', Icons.table_chart_rounded, _addTableItem, provider.textColor),
             const SizedBox(width: 8),
             _buildActionButton('Add Chart', Icons.bar_chart_rounded, _addChartItem, provider.textColor),
+            const SizedBox(width: 8),
+            _buildActionButton('Simpan Semua File', Icons.download_for_offline_rounded, () => _saveAllFilesToDevice(node), provider.textColor),
           ],
         ),
       ),

@@ -1927,9 +1927,24 @@ class _MountMapCanvasState extends State<MountMapCanvas> with SingleTickerProvid
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Export Error: $e"), backgroundColor: Colors.redAccent),
-        );
+        if (e.toString().contains('Share callback error') || e.toString().contains('prior share-sheet')) {
+          debugPrint("Share callback info ignored: $e");
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Export Error: $e"),
+              backgroundColor: Colors.redAccent,
+              duration: const Duration(days: 365),
+              action: SnackBarAction(
+                label: 'CLOSE',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        }
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);

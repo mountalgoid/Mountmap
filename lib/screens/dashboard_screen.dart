@@ -638,6 +638,14 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
         SnackBar(
           content: Text("Export '${asset.title}' berhasil."),
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(days: 365),
+          action: SnackBarAction(
+            label: 'CLOSE',
+            textColor: Colors.amberAccent,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
         ),
       );
     } catch (e) {
@@ -646,6 +654,10 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
         Navigator.of(context, rootNavigator: true).pop();
       }
       final rawError = e.toString();
+      if (rawError.contains('Share callback error') || rawError.contains('prior share-sheet')) {
+        debugPrint("Share callback info ignored: $rawError");
+        return;
+      }
       final cleanError = rawError.startsWith('Exception: ')
           ? rawError.replaceFirst('Exception: ', '')
           : rawError;
@@ -654,6 +666,14 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
           content: Text("Export gagal: $cleanError"),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(days: 365),
+          action: SnackBarAction(
+            label: 'CLOSE',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
         ),
       );
     }
@@ -719,6 +739,14 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
         SnackBar(
           content: Text("Import '$fileName' berhasil."),
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(days: 365),
+          action: SnackBarAction(
+            label: 'CLOSE',
+            textColor: Colors.amberAccent,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
         ),
       );
     } catch (e) {
@@ -735,6 +763,14 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
           content: Text("Import gagal: $cleanError"),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(days: 365),
+          action: SnackBarAction(
+            label: 'CLOSE',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
         ),
       );
     }
