@@ -13,6 +13,7 @@ import '../providers/mountmap_provider.dart';
 import '../theme/app_colors.dart';
 import '../widgets/chart_engine.dart';
 import '../screens/attachment_viewer_screen.dart';
+import 'aesthetic_toast.dart';
 
 class DescriptionTemplate {
   final String title;
@@ -254,20 +255,12 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       final sourceFile = File(filePath);
       if (!await sourceFile.exists()) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("File asal tidak ditemukan di penyimpanan lokal"),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(days: 365),
-            action: SnackBarAction(
-              label: 'CLOSE',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
+        AestheticToast.show(
+          context,
+          title: "FILE TIDAK DITEMUKAN",
+          message: "File asal tidak ditemukan di penyimpanan lokal",
+          type: ToastType.error,
+          persistent: true,
         );
         return;
       }
@@ -294,38 +287,22 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       _hideLoadingDialog();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("File '$safeName' berhasil disimpan ke perangkat:\n$destPath"),
-          backgroundColor: MountMapColors.teal,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.amberAccent,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "SIMPAN FILE BERHASIL",
+        message: "File '$safeName' berhasil disimpan ke perangkat:\n$destPath",
+        type: ToastType.success,
+        persistent: true,
       );
     } catch (e) {
       _hideLoadingDialog();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Gagal menyimpan file ke perangkat: $e"),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "SIMPAN FILE GAGAL",
+        message: "Gagal menyimpan file ke perangkat: $e",
+        type: ToastType.error,
+        persistent: true,
       );
     }
   }
@@ -361,19 +338,12 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     }
 
     if (filesToSave.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text("Tidak ada file lampiran yang ditemukan di deskripsi ini."),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "TIDAK ADA FILE",
+        message: "Tidak ada file lampiran yang ditemukan di deskripsi ini.",
+        type: ToastType.info,
+        persistent: true,
       );
       return;
     }
@@ -415,20 +385,12 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     _hideLoadingDialog();
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Berhasil menyimpan $successCount file deskripsi ke folder:\n${targetDir.path}${failCount > 0 ? ' ($failCount gagal)' : ''}"),
-        backgroundColor: MountMapColors.teal,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(days: 365),
-        action: SnackBarAction(
-          label: 'CLOSE',
-          textColor: Colors.amberAccent,
-          onPressed: () {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          },
-        ),
-      ),
+    AestheticToast.show(
+      context,
+      title: "SIMPAN SEMUA FILE BERHASIL",
+      message: "Berhasil menyimpan $successCount file deskripsi ke folder:\n${targetDir.path}${failCount > 0 ? ' ($failCount gagal)' : ''}",
+      type: ToastType.success,
+      persistent: true,
     );
   }
 
@@ -602,38 +564,22 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       _hideLoadingDialog();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Berhasil menambahkan $addedCount lampiran file:\n${fileNames.join(', ')}"),
-          backgroundColor: MountMapColors.teal,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.amberAccent,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "LAMPIRAN DITAMBAHKAN",
+        message: "Berhasil menambahkan $addedCount lampiran file:\n${fileNames.join(', ')}",
+        type: ToastType.success,
+        persistent: true,
       );
     } catch (e) {
       _hideLoadingDialog();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Gagal menambahkan lampiran file: $e"),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "GAGAL MENAMBAHKAN LAMPIRAN",
+        message: "Gagal menambahkan lampiran file: $e",
+        type: ToastType.error,
+        persistent: true,
       );
     }
   }
@@ -691,38 +637,22 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                   _hideLoadingDialog();
 
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("Berhasil membuat dan menempelkan file '$fileName' di deskripsi."),
-                      backgroundColor: MountMapColors.teal,
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(days: 365),
-                      action: SnackBarAction(
-                        label: 'CLOSE',
-                        textColor: Colors.amberAccent,
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        },
-                      ),
-                    ),
+                  AestheticToast.show(
+                    context,
+                    title: "FILE DIBUAT",
+                    message: "Berhasil membuat dan menempelkan file '$fileName' di deskripsi.",
+                    type: ToastType.success,
+                    persistent: true,
                   );
                 } catch (e) {
                   _hideLoadingDialog();
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("Gagal membuat file: $e"),
-                      backgroundColor: Colors.redAccent,
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(days: 365),
-                      action: SnackBarAction(
-                        label: 'CLOSE',
-                        textColor: Colors.white,
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        },
-                      ),
-                    ),
+                  AestheticToast.show(
+                    context,
+                    title: "GAGAL MEMBUAT FILE",
+                    message: "Gagal membuat file: $e",
+                    type: ToastType.error,
+                    persistent: true,
                   );
                 }
               }

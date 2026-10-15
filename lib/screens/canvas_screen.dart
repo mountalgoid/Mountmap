@@ -17,6 +17,7 @@ import '../widgets/canvas_painter.dart';
 import '../widgets/description_panel.dart';
 import '../theme/app_colors.dart';
 import 'attachment_viewer_screen.dart';
+import '../widgets/aesthetic_toast.dart';
 
 class MountMapCanvas extends StatefulWidget {
   const MountMapCanvas({super.key});
@@ -1930,19 +1931,12 @@ class _MountMapCanvasState extends State<MountMapCanvas> with SingleTickerProvid
         if (e.toString().contains('Share callback error') || e.toString().contains('prior share-sheet')) {
           debugPrint("Share callback info ignored: $e");
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Export Error: $e"),
-              backgroundColor: Colors.redAccent,
-              duration: const Duration(days: 365),
-              action: SnackBarAction(
-                label: 'CLOSE',
-                textColor: Colors.white,
-                onPressed: () {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                },
-              ),
-            ),
+          AestheticToast.show(
+            context,
+            title: "EXPORT GAGAL",
+            message: "Export Error: $e",
+            type: ToastType.error,
+            persistent: true,
           );
         }
       }

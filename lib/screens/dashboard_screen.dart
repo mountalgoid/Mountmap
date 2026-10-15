@@ -7,6 +7,7 @@ import '../theme/app_colors.dart';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'chart_screen.dart';
+import '../widgets/aesthetic_toast.dart';
 
 class MountMapDashboard extends StatefulWidget {
   const MountMapDashboard({super.key});
@@ -634,19 +635,12 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
         dialogShown = false;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Export '${asset.title}' berhasil."),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.amberAccent,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "EXPORT BERHASIL",
+        message: "Export '${asset.title}' berhasil.",
+        type: ToastType.success,
+        persistent: true,
       );
     } catch (e) {
       if (!mounted) return;
@@ -661,20 +655,12 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
       final cleanError = rawError.startsWith('Exception: ')
           ? rawError.replaceFirst('Exception: ', '')
           : rawError;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Export gagal: $cleanError"),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "EXPORT GAGAL",
+        message: cleanError,
+        type: ToastType.error,
+        persistent: true,
       );
     }
   }
@@ -735,19 +721,12 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
         dialogShown = false;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Import '$fileName' berhasil."),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.amberAccent,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "IMPORT BERHASIL",
+        message: "Import '$fileName' berhasil.",
+        type: ToastType.success,
+        persistent: true,
       );
     } catch (e) {
       if (!mounted) return;
@@ -758,20 +737,12 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
       final cleanError = rawError.startsWith('Exception: ')
           ? rawError.replaceFirst('Exception: ', '')
           : rawError;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Import gagal: $cleanError"),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "IMPORT GAGAL",
+        message: cleanError,
+        type: ToastType.error,
+        persistent: true,
       );
     }
   }
@@ -833,12 +804,11 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
 
         if (value == 'copy') {
           provider.copyAssetToClipboard(asset.id);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("'${asset.title}' disalin ke clipboard"),
-              duration: const Duration(seconds: 1),
-              behavior: SnackBarBehavior.floating,
-            ),
+          AestheticToast.show(
+            context,
+            title: "CLIPBOARD",
+            message: "'${asset.title}' disalin ke clipboard",
+            type: ToastType.info,
           );
         }
       },
