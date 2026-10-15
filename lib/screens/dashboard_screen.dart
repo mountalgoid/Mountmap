@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
 import 'package:provider/provider.dart';
 import '../providers/mountmap_provider.dart';
@@ -7,6 +8,7 @@ import '../theme/app_colors.dart';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'chart_screen.dart';
+import '../widgets/aesthetic_toast.dart';
 
 class MountMapDashboard extends StatefulWidget {
   const MountMapDashboard({super.key});
@@ -19,6 +21,109 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
   final TextEditingController _searchController = TextEditingController();
   bool _isSearching = false;
   String _searchQuery = "";
+
+  static const MethodChannel _sharedFileChannel = MethodChannel('com.example.mountmap/shared_file');
+
+  @override
+  void initState() {
+    super.initState();
+    _initSharedFileListener();
+  }
+
+  void _initSharedFileListener() {
+    _sharedFileChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onFileShared') {
+        final String? filePath = call.arguments as String?;
+        if (filePath != null && filePath.isNotEmpty) {
+          _processSharedImportFile(filePath);
+        }
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final String? initialFile = await _sharedFileChannel.invokeMethod<String>('getSharedFile');
+        if (initialFile != null && initialFile.isNotEmpty) {
+          _processSharedImportFile(initialFile);
+        }
+      } catch (e) {
+        debugPrint("Error checking shared file intent: $e");
+      }
+    });
+  }
+
+  Future<void> _processSharedImportFile(String filePath) async {
+    final provider = Provider.of<MountMapProvider>(context, listen: false);
+    final file = File(filePath);
+    if (!await file.exists()) return;
+
+    final fileName = filePath.split('/').last.replaceFirst(RegExp(r'^import_'), '');
+
+    bool dialogShown = false;
+    try {
+      if (!mounted) return;
+      dialogShown = true;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            backgroundColor: provider.cardColor,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: MountMapColors.teal),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    "Sedang mengimpor file '$fileName'...",
+                    style: TextStyle(color: provider.textColor, fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await provider.importFromMountMap(file);
+
+      if (!mounted) return;
+      if (dialogShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+        dialogShown = false;
+      }
+
+      AestheticToast.show(
+        context,
+        title: "IMPORT BERHASIL",
+        message: "File '$fileName' berhasil diimpor ke MountMap.",
+        type: ToastType.success,
+        persistent: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      if (dialogShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      final rawError = e.toString();
+      final cleanError = rawError.startsWith('Exception: ')
+          ? rawError.replaceFirst('Exception: ', '')
+          : rawError;
+      AestheticToast.show(
+        context,
+        title: "IMPORT GAGAL",
+        message: "Gagal mengimpor file: $cleanError",
+        type: ToastType.error,
+        persistent: true,
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -634,19 +739,12 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
         dialogShown = false;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Export '${asset.title}' berhasil."),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.amberAccent,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "EXPORT BERHASIL",
+        message: "Export '${asset.title}' berhasil.",
+        type: ToastType.success,
+        persistent: true,
       );
     } catch (e) {
       if (!mounted) return;
@@ -661,20 +759,12 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
       final cleanError = rawError.startsWith('Exception: ')
           ? rawError.replaceFirst('Exception: ', '')
           : rawError;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Export gagal: $cleanError"),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "EXPORT GAGAL",
+        message: cleanError,
+        type: ToastType.error,
+        persistent: true,
       );
     }
   }
@@ -735,19 +825,12 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
         dialogShown = false;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Import '$fileName' berhasil."),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.amberAccent,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "IMPORT BERHASIL",
+        message: "Import '$fileName' berhasil.",
+        type: ToastType.success,
+        persistent: true,
       );
     } catch (e) {
       if (!mounted) return;
@@ -758,20 +841,12 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
       final cleanError = rawError.startsWith('Exception: ')
           ? rawError.replaceFirst('Exception: ', '')
           : rawError;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Import gagal: $cleanError"),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(days: 365),
-          action: SnackBarAction(
-            label: 'CLOSE',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "IMPORT GAGAL",
+        message: cleanError,
+        type: ToastType.error,
+        persistent: true,
       );
     }
   }
@@ -833,12 +908,11 @@ class _MountMapDashboardState extends State<MountMapDashboard> {
 
         if (value == 'copy') {
           provider.copyAssetToClipboard(asset.id);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("'${asset.title}' disalin ke clipboard"),
-              duration: const Duration(seconds: 1),
-              behavior: SnackBarBehavior.floating,
-            ),
+          AestheticToast.show(
+            context,
+            title: "CLIPBOARD",
+            message: "'${asset.title}' disalin ke clipboard",
+            type: ToastType.info,
           );
         }
       },

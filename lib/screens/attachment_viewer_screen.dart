@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/node_model.dart';
 import '../theme/app_colors.dart';
 import '../providers/mountmap_provider.dart';
+import '../widgets/aesthetic_toast.dart';
 
 class SearchTextEditingController extends TextEditingController {
   String _searchQuery = "";
@@ -309,14 +310,20 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
     try {
       await File(widget.item.value).writeAsString(_textController.text);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("File berhasil disimpan"), backgroundColor: MountMapColors.teal),
+        AestheticToast.show(
+          context,
+          title: "SIMPAN FILE",
+          message: "File berhasil disimpan",
+          type: ToastType.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Gagal menyimpan file: $e"), backgroundColor: Colors.redAccent),
+        AestheticToast.show(
+          context,
+          title: "SIMPAN FILE GAGAL",
+          message: "Gagal menyimpan file: $e",
+          type: ToastType.error,
         );
       }
     } finally {
@@ -387,7 +394,14 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
               final url = await _webController?.currentUrl();
               if (url != null) {
                 await Clipboard.setData(ClipboardData(text: url));
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("URL disalin ke clipboard")));
+                if (mounted) {
+                  AestheticToast.show(
+                    context,
+                    title: "CLIPBOARD",
+                    message: "URL disalin ke clipboard",
+                    type: ToastType.info,
+                  );
+                }
               }
             },
           ),
@@ -817,7 +831,12 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
                         _lastText = newText;
                         _findMatches(""); // Clear matches
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Semua berhasil diganti")));
+                        AestheticToast.show(
+                          context,
+                          title: "TEKS DIGANTI",
+                          message: "Semua teks berhasil diganti",
+                          type: ToastType.success,
+                        );
                       }
                     },
                     child: const Text("Ganti Semua", style: TextStyle(color: Colors.white)),

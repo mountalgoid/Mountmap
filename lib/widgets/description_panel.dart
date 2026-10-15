@@ -13,6 +13,7 @@ import '../providers/mountmap_provider.dart';
 import '../theme/app_colors.dart';
 import '../widgets/chart_engine.dart';
 import '../screens/attachment_viewer_screen.dart';
+import 'aesthetic_toast.dart';
 
 class DescriptionTemplate {
   final String title;
@@ -198,6 +199,46 @@ class ProfessionalDescriptionPanel extends StatefulWidget {
 class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPanel> {
   String? _editingBlockId;
   int _tableGeneration = 0;
+  bool _progressDialogShown = false;
+
+  void _showLoadingDialog(String message) {
+    _progressDialogShown = true;
+    final provider = Provider.of<MountMapProvider>(context, listen: false);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: provider.cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: MountMapColors.teal),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(color: provider.textColor, fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _hideLoadingDialog() {
+    if (_progressDialogShown && mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      _progressDialogShown = false;
+    }
+  }
 
   Future<Directory> _getPublicDownloadDirectory() async {
     if (Platform.isAndroid) {
@@ -214,14 +255,17 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       final sourceFile = File(filePath);
       if (!await sourceFile.exists()) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("File asal tidak ditemukan di penyimpanan lokal"),
-            backgroundColor: Colors.redAccent,
-          ),
+        AestheticToast.show(
+          context,
+          title: "FILE TIDAK DITEMUKAN",
+          message: "File asal tidak ditemukan di penyimpanan lokal",
+          type: ToastType.error,
+          persistent: true,
         );
         return;
       }
+
+      _showLoadingDialog("Sedang menyimpan file '$originalName' ke perangkat...");
 
       final targetDir = await _getPublicDownloadDirectory();
       final safeName = originalName.isEmpty ? sourceFile.path.split('/').last : originalName;
@@ -240,29 +284,25 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       }
 
       await sourceFile.copy(destPath);
+      _hideLoadingDialog();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Berhasil menyimpan file ke: $destPath"),
-          backgroundColor: MountMapColors.teal,
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'OK',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
-        ),
+      AestheticToast.show(
+        context,
+        title: "SIMPAN FILE BERHASIL",
+        message: "File '$safeName' berhasil disimpan ke perangkat:\n$destPath",
+        type: ToastType.success,
+        persistent: true,
       );
     } catch (e) {
+      _hideLoadingDialog();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Gagal menyimpan file: $e"),
-          backgroundColor: Colors.redAccent,
-        ),
+      AestheticToast.show(
+        context,
+        title: "SIMPAN FILE GAGAL",
+        message: "Gagal menyimpan file ke perangkat: $e",
+        type: ToastType.error,
+        persistent: true,
       );
     }
   }
@@ -298,14 +338,17 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     }
 
     if (filesToSave.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Tidak ada file lampiran yang ditemukan di deskripsi ini."),
-        ),
+      AestheticToast.show(
+        context,
+        title: "TIDAK ADA FILE",
+        message: "Tidak ada file lampiran yang ditemukan di deskripsi ini.",
+        type: ToastType.info,
+        persistent: true,
       );
       return;
     }
 
+    _showLoadingDialog("Sedang menyimpan ${filesToSave.length} file deskripsi ke perangkat...");
     int successCount = 0;
     int failCount = 0;
     final targetDir = await _getPublicDownloadDirectory();
@@ -339,20 +382,15 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       }
     }
 
+    _hideLoadingDialog();
+
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Berhasil menyimpan $successCount file ke ${targetDir.path}${failCount > 0 ? ' ($failCount gagal)' : ''}"),
-        backgroundColor: MountMapColors.teal,
-        duration: const Duration(seconds: 4),
-        action: SnackBarAction(
-          label: 'OK',
-          textColor: Colors.white,
-          onPressed: () {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          },
-        ),
-      ),
+    AestheticToast.show(
+      context,
+      title: "SIMPAN SEMUA FILE BERHASIL",
+      message: "Berhasil menyimpan $successCount file deskripsi ke folder:\n${targetDir.path}${failCount > 0 ? ' ($failCount gagal)' : ''}",
+      type: ToastType.success,
+      persistent: true,
     );
   }
 
@@ -499,26 +537,50 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
   Future<void> _pickAndAddFile(MountMapProvider provider) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(allowMultiple: true);
-      if (result != null) {
-        for (var file in result.files) {
-          if (file.path != null) {
-            String permanentPath = await provider.saveAttachmentFile(file.path!, file.name);
-            provider.addDescriptionBlock(widget.node.id, DescriptionBlock(
+      if (result == null || result.files.isEmpty) return;
+
+      _showLoadingDialog("Sedang memproses lampiran file...");
+      int addedCount = 0;
+      List<String> fileNames = [];
+
+      for (var file in result.files) {
+        if (file.path != null) {
+          String permanentPath = await provider.saveAttachmentFile(file.path!, file.name);
+          provider.addDescriptionBlock(widget.node.id, DescriptionBlock(
+            id: "${DateTime.now().millisecondsSinceEpoch}_${file.name}",
+            type: BlockType.attachment,
+            attachment: AttachmentItem(
               id: "${DateTime.now().millisecondsSinceEpoch}_${file.name}",
-              type: BlockType.attachment,
-              attachment: AttachmentItem(
-                id: "${DateTime.now().millisecondsSinceEpoch}_${file.name}",
-                name: file.name,
-                value: permanentPath,
-                type: 'file'
-              ),
-            ));
-          }
+              name: file.name,
+              value: permanentPath,
+              type: 'file',
+            ),
+          ));
+          addedCount++;
+          fileNames.add(file.name);
         }
       }
-    } catch (e) {
+
+      _hideLoadingDialog();
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to pick file")));
+      AestheticToast.show(
+        context,
+        title: "LAMPIRAN DITAMBAHKAN",
+        message: "Berhasil menambahkan $addedCount lampiran file:\n${fileNames.join(', ')}",
+        type: ToastType.success,
+        persistent: true,
+      );
+    } catch (e) {
+      _hideLoadingDialog();
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "GAGAL MENAMBAHKAN LAMPIRAN",
+        message: "Gagal menambahkan lampiran file: $e",
+        type: ToastType.error,
+        persistent: true,
+      );
     }
   }
 
@@ -527,7 +589,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         backgroundColor: provider.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text("Create New File", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold)),
@@ -542,17 +604,21 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text("CANCEL")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: MountMapColors.teal, foregroundColor: Colors.white),
             onPressed: () async {
               if (nameCtrl.text.isNotEmpty) {
+                final fileName = nameCtrl.text.trim();
+                Navigator.pop(dialogCtx);
                 try {
+                  _showLoadingDialog("Sedang membuat file baru '$fileName'...");
+
                   final dir = await getApplicationDocumentsDirectory();
                   final fileDir = Directory('${dir.path}/MountAttachments');
                   if (!await fileDir.exists()) await fileDir.create();
 
-                  final file = File('${fileDir.path}/${nameCtrl.text}');
+                  final file = File('${fileDir.path}/$fileName');
                   if (!await file.exists()) {
                     await file.writeAsString("");
                   }
@@ -562,16 +628,32 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                     type: BlockType.attachment,
                     attachment: AttachmentItem(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      name: nameCtrl.text,
+                      name: fileName,
                       value: file.path,
-                      type: 'file'
+                      type: 'file',
                     ),
                   ));
+
+                  _hideLoadingDialog();
+
                   if (!mounted) return;
-                  Navigator.pop(context);
+                  AestheticToast.show(
+                    context,
+                    title: "FILE DIBUAT",
+                    message: "Berhasil membuat dan menempelkan file '$fileName' di deskripsi.",
+                    type: ToastType.success,
+                    persistent: true,
+                  );
                 } catch (e) {
+                  _hideLoadingDialog();
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+                  AestheticToast.show(
+                    context,
+                    title: "GAGAL MEMBUAT FILE",
+                    message: "Gagal membuat file: $e",
+                    type: ToastType.error,
+                    persistent: true,
+                  );
                 }
               }
             },

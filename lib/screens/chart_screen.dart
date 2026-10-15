@@ -13,6 +13,7 @@ import '../models/mindmap_model.dart';
 import '../models/node_model.dart';
 import '../theme/app_colors.dart';
 import '../widgets/chart_engine.dart';
+import '../widgets/aesthetic_toast.dart';
 
 class ChartCanvasScreen extends StatefulWidget {
   final String chartType;
@@ -184,35 +185,22 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
     try {
       await provider.exportToMountFlow(widget.asset);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Chart exported as .mountflow successfully!"),
-            duration: const Duration(days: 365),
-            action: SnackBarAction(
-              label: 'CLOSE',
-              textColor: Colors.amberAccent,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
+        AestheticToast.show(
+          context,
+          title: "EXPORT BERHASIL",
+          message: "Chart exported as .mountflow successfully!",
+          type: ToastType.success,
+          persistent: true,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Export failed: $e"),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(days: 365),
-            action: SnackBarAction(
-              label: 'CLOSE',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
+        AestheticToast.show(
+          context,
+          title: "EXPORT GAGAL",
+          message: "Export failed: $e",
+          type: ToastType.error,
+          persistent: true,
         );
       }
     } finally {
@@ -233,18 +221,12 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
         if (file.path.endsWith('.mountflow')) {
           await provider.importFromMountFlow(file);
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text("Data imported from .mountflow successfully!"),
-                duration: const Duration(days: 365),
-                action: SnackBarAction(
-                  label: 'CLOSE',
-                  textColor: Colors.amberAccent,
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                  },
-                ),
-              ),
+            AestheticToast.show(
+              context,
+              title: "IMPORT BERHASIL",
+              message: "Data imported from .mountflow successfully!",
+              type: ToastType.success,
+              persistent: true,
             );
           }
         } else {
@@ -253,19 +235,12 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Import failed: $e"),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(days: 365),
-            action: SnackBarAction(
-              label: 'CLOSE',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
+        AestheticToast.show(
+          context,
+          title: "IMPORT GAGAL",
+          message: "Import failed: $e",
+          type: ToastType.error,
+          persistent: true,
         );
       }
     } finally {
@@ -908,19 +883,12 @@ class _ChartCanvasScreenState extends State<ChartCanvasScreen> with TickerProvid
         if (e.toString().contains('Share callback error') || e.toString().contains('prior share-sheet')) {
           debugPrint("Share callback info ignored: $e");
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Export Error: $e"),
-              backgroundColor: Colors.redAccent,
-              duration: const Duration(days: 365),
-              action: SnackBarAction(
-                label: 'CLOSE',
-                textColor: Colors.white,
-                onPressed: () {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                },
-              ),
-            ),
+          AestheticToast.show(
+            context,
+            title: "EXPORT GAGAL",
+            message: "Export Error: $e",
+            type: ToastType.error,
+            persistent: true,
           );
         }
       }
