@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -264,6 +265,172 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       await targetFolder.create(recursive: true);
     }
     return targetFolder;
+  }
+
+  static int _computeCrc32(List<int> data) {
+    int crc = 0xFFFFFFFF;
+    for (var byte in data) {
+      crc ^= byte;
+      for (int i = 0; i < 8; i++) {
+        if ((crc & 1) != 0) {
+          crc = (crc >> 1) ^ 0xEDB88320;
+        } else {
+          crc = crc >> 1;
+        }
+      }
+    }
+    return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+  }
+
+  Future<void> _downloadFolderAsZip(NodeModel node, DescriptionBlock folderBlock) async {
+    final folderName = folderBlock.content ?? "Folder";
+    final folderBlocks = node.descriptionBlocks.where((b) => b.folderId == folderBlock.id).toList();
+
+    final List<({String name, File file})> filesInFolder = [];
+
+    for (var block in folderBlocks) {
+      if (block.type == BlockType.attachment && block.attachment != null) {
+        final item = block.attachment!;
+        if (item.type == 'file' && item.value.isNotEmpty) {
+          final f = File(item.value);
+          if (await f.exists()) {
+            final name = item.name.isEmpty ? f.path.split('/').last : item.name;
+            filesInFolder.add((name: name, file: f));
+          }
+        }
+      }
+      if ((block.type == BlockType.table || block.type == BlockType.chart) && block.tableData != null) {
+        for (var row in block.tableData!) {
+          for (var cell in row) {
+            if (cell.startsWith(DescriptionBlock.tableFilePrefix)) {
+              final parsed = _parseTableAttachmentValue(cell);
+              if (parsed.value.isNotEmpty) {
+                final f = File(parsed.value);
+                if (await f.exists()) {
+                  filesInFolder.add((name: parsed.name, file: f));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (filesInFolder.isEmpty) {
+      AestheticToast.show(
+        context,
+        title: "FOLDER KOSONG",
+        message: "Tidak ada file fisik yang dapat diunduh di dalam folder '$folderName'.",
+        type: ToastType.info,
+        persistent: true,
+      );
+      return;
+    }
+
+    try {
+      _showLoadingDialog("Membuat file Zip untuk folder '$folderName'...");
+
+      final BytesBuilder zipBytes = BytesBuilder();
+      final BytesBuilder cdBytes = BytesBuilder();
+      int localHeaderOffset = 0;
+
+      final now = DateTime.now();
+      final dosTime = (now.hour << 11) | (now.minute << 5) | (now.second >> 1);
+      final dosDate = ((now.year - 1980) << 9) | (now.month << 5) | now.day;
+
+      for (var fileEntry in filesInFolder) {
+        final fileData = await fileEntry.file.readAsBytes();
+        final fileNameBytes = utf8.encode(fileEntry.name.split('/').last);
+        final crc32 = _computeCrc32(fileData);
+        final fileSize = fileData.length;
+
+        // Local Header
+        final ByteData localHeader = ByteData(30);
+        localHeader.setUint32(0, 0x04034b50, Endian.little);
+        localHeader.setUint16(4, 20, Endian.little); // version needed
+        localHeader.setUint16(6, 0, Endian.little); // flags
+        localHeader.setUint16(8, 0, Endian.little); // compression = 0 (Store)
+        localHeader.setUint16(10, dosTime, Endian.little);
+        localHeader.setUint16(12, dosDate, Endian.little);
+        localHeader.setUint32(14, crc32, Endian.little);
+        localHeader.setUint32(18, fileSize, Endian.little);
+        localHeader.setUint32(22, fileSize, Endian.little);
+        localHeader.setUint16(26, fileNameBytes.length, Endian.little);
+        localHeader.setUint16(28, 0, Endian.little); // extra field len
+
+        zipBytes.add(localHeader.buffer.asUint8List());
+        zipBytes.add(fileNameBytes);
+        zipBytes.add(fileData);
+
+        // Central Directory Header
+        final ByteData cdHeader = ByteData(46);
+        cdHeader.setUint32(0, 0x02014b50, Endian.little);
+        cdHeader.setUint16(4, 20, Endian.little); // version made by
+        cdHeader.setUint16(6, 20, Endian.little); // version needed
+        cdHeader.setUint16(8, 0, Endian.little); // flags
+        cdHeader.setUint16(10, 0, Endian.little); // compression
+        cdHeader.setUint16(12, dosTime, Endian.little);
+        cdHeader.setUint16(14, dosDate, Endian.little);
+        cdHeader.setUint32(16, crc32, Endian.little);
+        cdHeader.setUint32(20, fileSize, Endian.little);
+        cdHeader.setUint32(24, fileSize, Endian.little);
+        cdHeader.setUint16(28, fileNameBytes.length, Endian.little);
+        cdHeader.setUint16(30, 0, Endian.little); // extra len
+        cdHeader.setUint16(32, 0, Endian.little); // comment len
+        cdHeader.setUint16(34, 0, Endian.little); // disk num
+        cdHeader.setUint16(36, 0, Endian.little); // internal attr
+        cdHeader.setUint32(38, 0, Endian.little); // external attr
+        cdHeader.setUint32(42, localHeaderOffset, Endian.little);
+
+        cdBytes.add(cdHeader.buffer.asUint8List());
+        cdBytes.add(fileNameBytes);
+
+        localHeaderOffset += 30 + fileNameBytes.length + fileSize;
+      }
+
+      final cdOffset = localHeaderOffset;
+      final cdSize = cdBytes.length;
+
+      // End of Central Directory Header
+      final ByteData eocd = ByteData(22);
+      eocd.setUint32(0, 0x06054b50, Endian.little);
+      eocd.setUint16(4, 0, Endian.little); // disk num
+      eocd.setUint16(6, 0, Endian.little); // cd disk num
+      eocd.setUint16(8, filesInFolder.length, Endian.little); // cd records on disk
+      eocd.setUint16(10, filesInFolder.length, Endian.little); // total cd records
+      eocd.setUint32(12, cdSize, Endian.little);
+      eocd.setUint32(16, cdOffset, Endian.little);
+      eocd.setUint16(20, 0, Endian.little); // comment len
+
+      zipBytes.add(cdBytes.takeBytes());
+      zipBytes.add(eocd.buffer.asUint8List());
+
+      final targetDir = await _getPublicDownloadDirectory(nodeFolderName: node.text);
+      final safeZipName = "${_sanitizeFolderName(folderName)}.zip";
+      final zipFile = File("${targetDir.path}/$safeZipName");
+      await zipFile.writeAsBytes(zipBytes.takeBytes());
+
+      _hideLoadingDialog();
+
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "DOWNLOAD ZIP BERHASIL",
+        message: "Berhasil mengemas ${filesInFolder.length} file ke dalam ZIP utuh:\n${zipFile.path}",
+        type: ToastType.success,
+        persistent: true,
+      );
+    } catch (e) {
+      _hideLoadingDialog();
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "DOWNLOAD ZIP GAGAL",
+        message: "Gagal membuat file Zip: $e",
+        type: ToastType.error,
+        persistent: true,
+      );
+    }
   }
 
   Future<void> _saveFileToDevice(String filePath, String originalName, {String? subFolder}) async {
@@ -1921,44 +2088,53 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
         children: [
           _buildHeader(node, textColor, isDark),
           Flexible(
-            child: ReorderableListView(
-              padding: const EdgeInsets.all(24),
-              onReorder: (oldIndex, newIndex) {
-                if (oldIndex >= node!.descriptionBlocks.length) return;
-                final targetIndex = newIndex > node.descriptionBlocks.length
-                    ? node.descriptionBlocks.length
-                    : newIndex;
-                provider.reorderDescriptionBlock(node.id, oldIndex, targetIndex);
-              },
-              children: [
-                ...node.descriptionBlocks.asMap().entries.map((entry) {
-                  final blockNumber = _getBlockTypeSequence(node!.descriptionBlocks, entry.key);
-                  return _buildBlock(
-                    key: ValueKey(entry.value.id),
-                    entry.value,
-                    provider,
-                    node!,
-                    textColor,
-                    isDark,
-                    entry.key,
-                    blockNumber,
-                  );
-                }),
+            child: () {
+              final topLevelBlocks = node!.descriptionBlocks.where((b) => b.folderId == null).toList();
+              return ReorderableListView(
+                padding: const EdgeInsets.all(24),
+                onReorder: (oldIndex, newIndex) {
+                  if (oldIndex >= topLevelBlocks.length) return;
+                  final targetIndex = newIndex > topLevelBlocks.length ? topLevelBlocks.length : newIndex;
+                  final oldRealIdx = node!.descriptionBlocks.indexOf(topLevelBlocks[oldIndex]);
+                  int newRealIdx = targetIndex < topLevelBlocks.length
+                      ? node.descriptionBlocks.indexOf(topLevelBlocks[targetIndex])
+                      : node.descriptionBlocks.length;
+                  if (oldRealIdx != -1) {
+                    provider.reorderDescriptionBlock(node.id, oldRealIdx, newRealIdx);
+                  }
+                },
+                children: [
+                  ...topLevelBlocks.asMap().entries.map((entry) {
+                    final block = entry.value;
+                    final realIdx = node!.descriptionBlocks.indexOf(block);
+                    final blockNumber = _getBlockTypeSequence(node.descriptionBlocks, realIdx);
+                    return _buildBlock(
+                      key: ValueKey(block.id),
+                      block,
+                      provider,
+                      node,
+                      textColor,
+                      isDark,
+                      entry.key,
+                      blockNumber,
+                    );
+                  }),
 
-                Container(
-                  key: const ValueKey('tags_section'),
-                  padding: const EdgeInsets.only(top: 20, bottom: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionTitle("TAGS", Icons.sell_outlined, textColor),
-                      const SizedBox(height: 12),
-                      _buildTags(node, provider),
-                    ],
+                  Container(
+                    key: const ValueKey('tags_section'),
+                    padding: const EdgeInsets.only(top: 20, bottom: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionTitle("TAGS", Icons.sell_outlined, textColor),
+                        const SizedBox(height: 12),
+                        _buildTags(node, provider),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              );
+            }(),
           ),
           _buildFooter(provider, node),
         ],
@@ -2154,6 +2330,11 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
+                  icon: const Icon(Icons.download_for_offline_rounded, size: 20, color: MountMapColors.teal),
+                  tooltip: "Download Folder sebagai File ZIP Utuh",
+                  onPressed: () => _downloadFolderAsZip(node, block),
+                ),
+                IconButton(
                   icon: const Icon(Icons.add_circle_outline_rounded, size: 20, color: MountMapColors.teal),
                   tooltip: "Tambah File ke Folder ini",
                   onPressed: () => _pickAndAddFile(provider, folderId: block.id),
@@ -2183,30 +2364,35 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                         ),
                       ),
                     )
-                  : Column(
-                      children: folderBlocks.asMap().entries.map((fEntry) {
-                        final childBlock = fEntry.value;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 3,
-                                height: 32,
-                                color: MountMapColors.teal.withValues(alpha: 0.5),
+                  : ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 280),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: folderBlocks.asMap().entries.map((fEntry) {
+                            final childBlock = fEntry.value;
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 3,
+                                    height: 32,
+                                    color: MountMapColors.teal.withValues(alpha: 0.5),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildBlockContent(childBlock, provider, node, textColor, true),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
+                                    onPressed: () => provider.removeDescriptionBlock(node.id, childBlock.id),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _buildBlockContent(childBlock, provider, node, textColor, true),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
-                                onPressed: () => provider.removeDescriptionBlock(node.id, childBlock.id),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                            );
+                          }).toList(),
+                        ),
+                      ),
                     ),
             ),
           ],
