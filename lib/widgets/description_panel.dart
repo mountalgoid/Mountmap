@@ -282,6 +282,111 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
   }
 
+  Future<void> _downloadFolderUncompressed(NodeModel node, DescriptionBlock folderBlock) async {
+    final folderName = folderBlock.content ?? "Folder";
+    final folderBlocks = node.descriptionBlocks.where((b) => b.folderId == folderBlock.id).toList();
+
+    final List<({String name, File file})> filesInFolder = [];
+
+    for (var block in folderBlocks) {
+      if (block.type == BlockType.attachment && block.attachment != null) {
+        final item = block.attachment!;
+        if (item.type == 'file' && item.value.isNotEmpty) {
+          final f = File(item.value);
+          if (await f.exists()) {
+            final name = item.name.isEmpty ? f.path.split('/').last : item.name;
+            filesInFolder.add((name: name, file: f));
+          }
+        }
+      }
+      if ((block.type == BlockType.table || block.type == BlockType.chart) && block.tableData != null) {
+        for (var row in block.tableData!) {
+          for (var cell in row) {
+            if (cell.startsWith(DescriptionBlock.tableFilePrefix)) {
+              final parsed = _parseTableAttachmentValue(cell);
+              if (parsed.value.isNotEmpty) {
+                final f = File(parsed.value);
+                if (await f.exists()) {
+                  filesInFolder.add((name: parsed.name, file: f));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (filesInFolder.isEmpty) {
+      AestheticToast.show(
+        context,
+        title: "FOLDER KOSONG",
+        message: "Tidak ada file fisik yang dapat diunduh di dalam folder '$folderName'.",
+        type: ToastType.info,
+        persistent: true,
+      );
+      return;
+    }
+
+    try {
+      _showLoadingDialog("Menyimpan folder '$folderName' tanpa kompresi...");
+
+      final baseTargetDir = await _getPublicDownloadDirectory(nodeFolderName: node.text);
+      final safeFolderSub = _sanitizeFolderName(folderName);
+      final folderTargetDir = Directory("${baseTargetDir.path}/$safeFolderSub");
+      if (!await folderTargetDir.exists()) {
+        await folderTargetDir.create(recursive: true);
+      }
+
+      int successCount = 0;
+      int failCount = 0;
+
+      for (var fileEntry in filesInFolder) {
+        try {
+          final safeName = fileEntry.name.isEmpty ? fileEntry.file.path.split('/').last : fileEntry.name;
+          String destPath = "${folderTargetDir.path}/$safeName";
+
+          if (await File(destPath).exists()) {
+            final timestamp = DateTime.now().millisecondsSinceEpoch;
+            final nameParts = safeName.split('.');
+            if (nameParts.length > 1) {
+              final ext = nameParts.last;
+              final base = nameParts.sublist(0, nameParts.length - 1).join('.');
+              destPath = "${folderTargetDir.path}/${base}_$timestamp.$ext";
+            } else {
+              destPath = "${folderTargetDir.path}/${safeName}_$timestamp";
+            }
+          }
+
+          await fileEntry.file.copy(destPath);
+          successCount++;
+        } catch (e) {
+          failCount++;
+        }
+      }
+
+      _hideLoadingDialog();
+
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "SIMPAN FOLDER BERHASIL",
+        message: "Berhasil menyimpan $successCount file ke folder perangkat:\n${folderTargetDir.path}${failCount > 0 ? ' ($failCount gagal)' : ''}",
+        type: ToastType.success,
+        persistent: true,
+      );
+    } catch (e) {
+      _hideLoadingDialog();
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "SIMPAN FOLDER GAGAL",
+        message: "Gagal menyimpan folder: $e",
+        type: ToastType.error,
+        persistent: true,
+      );
+    }
+  }
+
   Future<void> _downloadFolderAsZip(NodeModel node, DescriptionBlock folderBlock) async {
     final folderName = folderBlock.content ?? "Folder";
     final folderBlocks = node.descriptionBlocks.where((b) => b.folderId == folderBlock.id).toList();
@@ -2329,10 +2434,38 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
+                PopupMenuButton<String>(
                   icon: const Icon(Icons.download_for_offline_rounded, size: 20, color: MountMapColors.teal),
-                  tooltip: "Download Folder sebagai File ZIP Utuh",
-                  onPressed: () => _downloadFolderAsZip(node, block),
+                  tooltip: "Opsi Download Folder",
+                  onSelected: (val) {
+                    if (val == 'zip') {
+                      _downloadFolderAsZip(node, block);
+                    } else if (val == 'raw') {
+                      _downloadFolderUncompressed(node, block);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'raw',
+                      child: Row(
+                        children: [
+                          Icon(Icons.folder_copy_rounded, size: 18, color: MountMapColors.teal),
+                          SizedBox(width: 8),
+                          Text('Simpan Folder Biasa (Tanpa ZIP)', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'zip',
+                      child: Row(
+                        children: [
+                          Icon(Icons.archive_rounded, size: 18, color: MountMapColors.violet),
+                          SizedBox(width: 8),
+                          Text('Simpan sebagai File ZIP Utuh', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline_rounded, size: 20, color: MountMapColors.teal),
