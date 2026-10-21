@@ -47,6 +47,7 @@ class DescriptionBlock {
   String? chartType; // For chart
   String? folderId; // Parent folder ID for grouping blocks in folder
   bool isExpanded; // For folder open/close state
+  int? folderColor; // Custom color for folder block
 
   DescriptionBlock({
     required this.id,
@@ -57,6 +58,7 @@ class DescriptionBlock {
     this.chartType,
     this.folderId,
     this.isExpanded = true,
+    this.folderColor,
   });
 
   Map<String, dynamic> toJson() {
@@ -69,6 +71,7 @@ class DescriptionBlock {
       'chartType': chartType,
       'folderId': folderId,
       'isExpanded': isExpanded,
+      'folderColor': folderColor,
     };
   }
 
@@ -87,6 +90,7 @@ class DescriptionBlock {
       chartType: json['chartType'],
       folderId: json['folderId'],
       isExpanded: json['isExpanded'] ?? true,
+      folderColor: json['folderColor'],
     );
   }
 }
