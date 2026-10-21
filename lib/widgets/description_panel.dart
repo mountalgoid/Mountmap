@@ -1299,7 +1299,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     }
   }
 
-  void _showCreateFileDialog(MountMapProvider provider) {
+  void _showCreateFileDialog(MountMapProvider provider, {String? folderId}) {
     final nameCtrl = TextEditingController();
 
     showDialog(
@@ -1347,6 +1347,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                       value: file.path,
                       type: 'file',
                     ),
+                    folderId: folderId,
                   ));
 
                   _hideLoadingDialog();
@@ -1379,7 +1380,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
-  void _addTableItem() {
+  void _addTableItem({String? folderId}) {
     final provider = Provider.of<MountMapProvider>(context, listen: false);
     _showTemplatePickerModal(
       context: context,
@@ -1391,6 +1392,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
           id: blockId,
           type: BlockType.table,
           tableData: template.data.map((r) => List<String>.from(r)).toList(),
+          folderId: folderId,
         ));
       },
       onSelectBlank: () {
@@ -1402,13 +1404,14 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             ['Column 1', 'Column 2'],
             ['Data 1', 'Data 2'],
           ],
+          folderId: folderId,
         ));
         _showTableEditor(provider, widget.node.id, blockId);
       },
     );
   }
 
-  void _addChartItem() {
+  void _addChartItem({String? folderId}) {
     final provider = Provider.of<MountMapProvider>(context, listen: false);
     _showTemplatePickerModal(
       context: context,
@@ -1421,10 +1424,11 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
           type: BlockType.chart,
           chartType: template.recommendedChartType,
           tableData: template.data.map((r) => List<String>.from(r)).toList(),
+          folderId: folderId,
         ));
       },
       onSelectBlank: () {
-        _showChartTypePicker(context, provider);
+        _showChartTypePicker(context, provider, folderId: folderId);
       },
     );
   }
@@ -1603,7 +1607,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
-  void _showChartTypePicker(BuildContext context, MountMapProvider provider) {
+  void _showChartTypePicker(BuildContext context, MountMapProvider provider, {String? folderId}) {
     final Map<String, List<Map<String, dynamic>>> categories = {
       "FLOW & RELATIONAL": [
         {"name": "Alluvial Diagram", "icon": Icons.waterfall_chart_rounded},
@@ -1691,7 +1695,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                           return InkWell(
                             onTap: () {
                               Navigator.pop(context);
-                              _createChartBlock(provider, chart['name']);
+                              _createChartBlock(provider, chart['name'], folderId: folderId);
                             },
                             child: Container(
                               decoration: BoxDecoration(
@@ -1733,7 +1737,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
-  void _createChartBlock(MountMapProvider provider, String chartType) {
+  void _createChartBlock(MountMapProvider provider, String chartType, {String? folderId}) {
     final blockId = DateTime.now().millisecondsSinceEpoch.toString();
 
     List<List<String>> initialData = [
@@ -1767,6 +1771,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       type: BlockType.chart,
       chartType: chartType,
       tableData: initialData,
+      folderId: folderId,
     ));
 
     _showTableEditor(provider, widget.node.id, blockId, isChart: true);
@@ -2960,6 +2965,45 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.add_circle_outline_rounded, size: 22, color: accentColor),
+                  tooltip: "Tambah Item ke Folder Ini",
+                  onSelected: (val) {
+                    if (val == 'file') {
+                      _pickAndAddFile(provider, folderId: block.id);
+                    } else if (val == 'folder') {
+                      _addFolderItem(folderId: block.id);
+                    } else if (val == 'table') {
+                      _addTableItem(folderId: block.id);
+                    } else if (val == 'chart') {
+                      _addChartItem(folderId: block.id);
+                    } else if (val == 'create_file') {
+                      _showCreateFileDialog(provider, folderId: block.id);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'file',
+                      child: Row(children: [Icon(Icons.upload_file, size: 18, color: MountMapColors.teal), SizedBox(width: 8), Text('Pick Local File', style: TextStyle(fontSize: 12))]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'folder',
+                      child: Row(children: [Icon(Icons.create_new_folder_rounded, size: 18, color: MountMapColors.teal), SizedBox(width: 8), Text('Buat Sub-Folder', style: TextStyle(fontSize: 12))]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'table',
+                      child: Row(children: [Icon(Icons.table_chart_rounded, size: 18, color: MountMapColors.violet), SizedBox(width: 8), Text('Tambah Tabel', style: TextStyle(fontSize: 12))]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'chart',
+                      child: Row(children: [Icon(Icons.bar_chart_rounded, size: 18, color: MountMapColors.violet), SizedBox(width: 8), Text('Tambah Chart', style: TextStyle(fontSize: 12))]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'create_file',
+                      child: Row(children: [Icon(Icons.add_box_rounded, size: 18, color: Colors.orangeAccent), SizedBox(width: 8), Text('Create New File', style: TextStyle(fontSize: 12))]),
+                    ),
+                  ],
+                ),
                 IconButton(
                   icon: Icon(Icons.palette_outlined, size: 20, color: accentColor),
                   tooltip: "Kustomisasi Warna Folder",
@@ -2997,16 +3041,6 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                       ),
                     ),
                   ],
-                ),
-                IconButton(
-                  icon: Icon(Icons.create_new_folder_outlined, size: 20, color: accentColor),
-                  tooltip: "Buat Sub-Folder di Dalam Folder ini",
-                  onPressed: () => _addFolderItem(folderId: block.id),
-                ),
-                IconButton(
-                  icon: Icon(Icons.add_circle_outline_rounded, size: 20, color: accentColor),
-                  tooltip: "Tambah File ke Folder ini",
-                  onPressed: () => _pickAndAddFile(provider, folderId: block.id),
                 ),
                 IconButton(
                   icon: Icon(isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 22, color: textColor),
