@@ -202,6 +202,9 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
   int _tableGeneration = 0;
   bool _progressDialogShown = false;
 
+  bool _isMultiSelectMode = false;
+  final Set<String> _selectedBlockIds = {};
+
   void _showLoadingDialog(String message) {
     _progressDialogShown = true;
     final provider = Provider.of<MountMapProvider>(context, listen: false);
@@ -830,23 +833,123 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
+  void _copyFolderRecursive(MountMapProvider provider, NodeModel node, DescriptionBlock sourceFolderBlock, String? targetFolderId, bool includeChildren) {
+    final Map<String, String> idMap = {};
+
+    final folderCopy = DescriptionBlock.fromJson(sourceFolderBlock.toJson());
+    final newFolderId = "${sourceFolderBlock.id}_copy_${DateTime.now().microsecondsSinceEpoch}";
+    idMap[sourceFolderBlock.id] = newFolderId;
+    folderCopy.id = newFolderId;
+    folderCopy.folderId = targetFolderId;
+    provider.addDescriptionBlock(node.id, folderCopy);
+
+    if (includeChildren) {
+      void copyChildren(String oldParentId, String newParentId) {
+        final children = node.descriptionBlocks.where((b) => b.folderId == oldParentId).toList();
+        for (var child in children) {
+          final childCopy = DescriptionBlock.fromJson(child.toJson());
+          final newChildId = "${child.id}_copy_${DateTime.now().microsecondsSinceEpoch}";
+          childCopy.id = newChildId;
+          childCopy.folderId = newParentId;
+          provider.addDescriptionBlock(node.id, childCopy);
+
+          if (child.type == BlockType.folder) {
+            copyChildren(child.id, newChildId);
+          }
+        }
+      }
+
+      copyChildren(sourceFolderBlock.id, newFolderId);
+    }
+  }
+
+  void _moveFolderRecursive(MountMapProvider provider, NodeModel node, DescriptionBlock sourceFolderBlock, String? targetFolderId, bool includeChildren) {
+    sourceFolderBlock.folderId = targetFolderId;
+
+    if (!includeChildren) {
+      final directChildren = node.descriptionBlocks.where((b) => b.folderId == sourceFolderBlock.id).toList();
+      for (var child in directChildren) {
+        child.folderId = targetFolderId;
+      }
+    }
+
+    provider.updatePeak(node.id, descriptionBlocks: List.from(node.descriptionBlocks));
+  }
+
   void _executeMoveOrCopy(MountMapProvider provider, NodeModel node, DescriptionBlock sourceBlock, {required String? targetFolderId}) {
+    final isFolder = sourceBlock.type == BlockType.folder;
+
+    if (isFolder) {
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          backgroundColor: provider.cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text("Opsi Folder: '${sourceBlock.content ?? 'Folder'}'", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Pilih mode penyalinan atau pemindahan folder:", style: TextStyle(color: provider.textColor.withValues(alpha: 0.8), fontSize: 12)),
+              const SizedBox(height: 16),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                leading: const Icon(Icons.folder_outlined, color: MountMapColors.teal),
+                title: Text("Hanya Folder (Tanpa File/Isi)", style: TextStyle(color: provider.textColor, fontSize: 13, fontWeight: FontWeight.bold)),
+                subtitle: Text("Hanya menyalin/memindahkan struktur foldernya saja", style: TextStyle(color: provider.textColor.withValues(alpha: 0.5), fontSize: 10)),
+                onTap: () {
+                  Navigator.pop(dialogCtx);
+                  _confirmActionType(provider, node, sourceBlock, targetFolderId, includeChildren: false);
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                leading: const Icon(Icons.folder_zip_rounded, color: MountMapColors.violet),
+                title: Text("Folder Beserta Seisi Filenya", style: TextStyle(color: provider.textColor, fontSize: 13, fontWeight: FontWeight.bold)),
+                subtitle: Text("Menyalin/memindahkan folder beserta seluruh file & sub-foldernya", style: TextStyle(color: provider.textColor.withValues(alpha: 0.5), fontSize: 10)),
+                onTap: () {
+                  Navigator.pop(dialogCtx);
+                  _confirmActionType(provider, node, sourceBlock, targetFolderId, includeChildren: true);
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      _confirmActionType(provider, node, sourceBlock, targetFolderId, includeChildren: false);
+    }
+  }
+
+  void _confirmActionType(MountMapProvider provider, NodeModel node, DescriptionBlock sourceBlock, String? targetFolderId, {required bool includeChildren}) {
+    final isFolder = sourceBlock.type == BlockType.folder;
+
     showDialog(
       context: context,
       builder: (dialogCtx) => AlertDialog(
         backgroundColor: provider.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text("Pilih Aksi", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
-        content: Text("Apakah Anda ingin memindahkan atau menyalin item ini?", style: TextStyle(color: provider.textColor.withValues(alpha: 0.8), fontSize: 13)),
+        content: Text(
+          isFolder
+              ? (includeChildren ? "Menyalin/memindahkan folder beserta seluruh isinya?" : "Menyalin/memindahkan struktur folder saja?")
+              : "Apakah Anda ingin memindahkan atau menyalin item ini?",
+          style: TextStyle(color: provider.textColor.withValues(alpha: 0.8), fontSize: 13),
+        ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(dialogCtx);
               // COPY ACTION
-              final copy = DescriptionBlock.fromJson(sourceBlock.toJson());
-              copy.id = "${sourceBlock.id}_copy_${DateTime.now().millisecondsSinceEpoch}";
-              copy.folderId = targetFolderId;
-              provider.addDescriptionBlock(node.id, copy);
+              if (isFolder) {
+                _copyFolderRecursive(provider, node, sourceBlock, targetFolderId, includeChildren);
+              } else {
+                final copy = DescriptionBlock.fromJson(sourceBlock.toJson());
+                copy.id = "${sourceBlock.id}_copy_${DateTime.now().microsecondsSinceEpoch}";
+                copy.folderId = targetFolderId;
+                provider.addDescriptionBlock(node.id, copy);
+              }
               AestheticToast.show(
                 context,
                 title: "ITEM DISALIN",
@@ -862,11 +965,14 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             onPressed: () {
               Navigator.pop(dialogCtx);
               // MOVE ACTION
-              provider.updateDescriptionBlock(node.id, sourceBlock.id);
-              setState(() {
-                sourceBlock.folderId = targetFolderId;
-              });
-              provider.updatePeak(node.id, descriptionBlocks: List.from(node.descriptionBlocks));
+              if (isFolder) {
+                _moveFolderRecursive(provider, node, sourceBlock, targetFolderId, includeChildren);
+              } else {
+                setState(() {
+                  sourceBlock.folderId = targetFolderId;
+                });
+                provider.updatePeak(node.id, descriptionBlocks: List.from(node.descriptionBlocks));
+              }
               AestheticToast.show(
                 context,
                 title: "ITEM DIPINDAHKAN",
@@ -2350,7 +2456,137 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
+  void _executeBatchMoveOrCopy(MountMapProvider provider, NodeModel node, {required bool isCopy}) {
+    if (_selectedBlockIds.isEmpty) return;
+
+    final allFolderBlocks = node.descriptionBlocks.where((b) => b.type == BlockType.folder && !_selectedBlockIds.contains(b.id)).toList();
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: provider.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(isCopy ? "Salin ${_selectedBlockIds.length} Item" : "Pindahkan ${_selectedBlockIds.length} Item", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Pilih folder tujuan:", style: TextStyle(color: provider.textColor.withValues(alpha: 0.7), fontSize: 12)),
+            const SizedBox(height: 12),
+            ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              leading: const Icon(Icons.home_outlined, color: MountMapColors.teal),
+              title: Text("Utama (Luar Folder)", style: TextStyle(color: provider.textColor, fontSize: 13)),
+              onTap: () {
+                Navigator.pop(dialogCtx);
+                _applyBatchMoveOrCopy(provider, node, targetFolderId: null, isCopy: isCopy);
+              },
+            ),
+            const Divider(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: allFolderBlocks.map((folderBlock) {
+                    final accentColor = folderBlock.folderColor != null ? Color(folderBlock.folderColor!) : MountMapColors.teal;
+                    return ListTile(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      leading: Icon(Icons.folder, color: accentColor),
+                      title: Text(folderBlock.content ?? "Folder", style: TextStyle(color: provider.textColor, fontSize: 13)),
+                      onTap: () {
+                        Navigator.pop(dialogCtx);
+                        _applyBatchMoveOrCopy(provider, node, targetFolderId: folderBlock.id, isCopy: isCopy);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _applyBatchMoveOrCopy(MountMapProvider provider, NodeModel node, {required String? targetFolderId, required bool isCopy}) {
+    final blocksToProcess = node.descriptionBlocks.where((b) => _selectedBlockIds.contains(b.id)).toList();
+
+    if (isCopy) {
+      for (var sourceBlock in blocksToProcess) {
+        final copy = DescriptionBlock.fromJson(sourceBlock.toJson());
+        copy.id = "${sourceBlock.id}_copy_${DateTime.now().microsecondsSinceEpoch}";
+        copy.folderId = targetFolderId;
+        provider.addDescriptionBlock(node.id, copy);
+      }
+      AestheticToast.show(
+        context,
+        title: "BATCH COPY BERHASIL",
+        message: "Berhasil menyalin ${blocksToProcess.length} item ke folder tujuan.",
+        type: ToastType.success,
+        persistent: false,
+      );
+    } else {
+      for (var sourceBlock in blocksToProcess) {
+        sourceBlock.folderId = targetFolderId;
+      }
+      provider.updatePeak(node.id, descriptionBlocks: List.from(node.descriptionBlocks));
+      AestheticToast.show(
+        context,
+        title: "BATCH MOVE BERHASIL",
+        message: "Berhasil memindahkan ${blocksToProcess.length} item ke folder tujuan.",
+        type: ToastType.success,
+        persistent: false,
+      );
+    }
+
+    setState(() {
+      _selectedBlockIds.clear();
+      _isMultiSelectMode = false;
+    });
+  }
+
+  void _executeBatchDelete(MountMapProvider provider, NodeModel node) {
+    if (_selectedBlockIds.isEmpty) return;
+
+    final count = _selectedBlockIds.length;
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: provider.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("Hapus $count Item", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Text("Apakah Anda yakin ingin menghapus $count item terpilih dari deskripsi?", style: TextStyle(color: provider.textColor.withValues(alpha: 0.8), fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text("BATAL")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              for (var id in _selectedBlockIds) {
+                provider.removeDescriptionBlock(node.id, id);
+              }
+              setState(() {
+                _selectedBlockIds.clear();
+                _isMultiSelectMode = false;
+              });
+              AestheticToast.show(
+                context,
+                title: "BATCH DELETE BERHASIL",
+                message: "Berhasil menghapus $count item dari deskripsi.",
+                type: ToastType.success,
+                persistent: false,
+              );
+            },
+            child: const Text("HAPUS SEMUA"),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHeader(NodeModel node, Color textColor, bool isDark) {
+    final provider = Provider.of<MountMapProvider>(context, listen: false);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 16, 20),
       decoration: BoxDecoration(
@@ -2366,29 +2602,101 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
           top: Radius.circular(24),
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: Text(
-              node.text.toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.5,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _isMultiSelectMode
+                      ? "${_selectedBlockIds.length} ITEM TERPILIH"
+                      : node.text.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
+              IconButton(
+                icon: Icon(_isMultiSelectMode ? Icons.deselect_rounded : Icons.checklist_rtl_rounded, color: Colors.white),
+                tooltip: _isMultiSelectMode ? "Selesai Pilih Banyak" : "Pilih Beberapa Item",
+                onPressed: () {
+                  setState(() {
+                    _isMultiSelectMode = !_isMultiSelectMode;
+                    if (!_isMultiSelectMode) _selectedBlockIds.clear();
+                  });
+                },
+              ),
+              if (!_isMultiSelectMode) ...[
+                IconButton(
+                  icon: const Icon(Icons.download_for_offline_rounded, color: Colors.white),
+                  tooltip: "Simpan Semua File Deskripsi ke Perangkat",
+                  onPressed: () => _saveAllFilesToDevice(node),
+                ),
+              ],
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+                onPressed: widget.onClose,
+              ),
+            ],
+          ),
+          if (_isMultiSelectMode) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white54),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.select_all_rounded, size: 16),
+                  label: const Text("Pilih Semua", style: TextStyle(fontSize: 11)),
+                  onPressed: () {
+                    setState(() {
+                      _selectedBlockIds.addAll(node.descriptionBlocks.map((b) => b.id));
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white54),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: const Text("Salin", style: TextStyle(fontSize: 11)),
+                  onPressed: () => _executeBatchMoveOrCopy(provider, node, isCopy: true),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white54),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.drive_file_move_rounded, size: 16),
+                  label: const Text("Pindah", style: TextStyle(fontSize: 11)),
+                  onPressed: () => _executeBatchMoveOrCopy(provider, node, isCopy: false),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.redAccent),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
+                  label: const Text("Hapus", style: TextStyle(fontSize: 11, color: Colors.redAccent)),
+                  onPressed: () => _executeBatchDelete(provider, node),
+                ),
+              ],
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.download_for_offline_rounded, color: Colors.white),
-            tooltip: "Simpan Semua File Deskripsi ke Perangkat",
-            onPressed: () => _saveAllFilesToDevice(node),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded, color: Colors.white),
-            onPressed: widget.onClose,
-          ),
+          ],
         ],
       ),
     );
@@ -2413,49 +2721,94 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
   }
 
   Widget _buildBlock(DescriptionBlock block, MountMapProvider provider, NodeModel node, Color textColor, bool isDark, int index, int blockNumber, {required Key key}) {
-    return Container(
-      key: key,
-      margin: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  ReorderableDragStartListener(
-                    index: index,
-                    child: Icon(Icons.drag_indicator_rounded, size: 20, color: textColor.withValues(alpha: 0.2)),
+    final isSelected = _selectedBlockIds.contains(block.id);
+
+    return InkWell(
+      onTap: _isMultiSelectMode
+          ? () {
+              setState(() {
+                if (isSelected) {
+                  _selectedBlockIds.remove(block.id);
+                } else {
+                  _selectedBlockIds.add(block.id);
+                }
+              });
+            }
+          : null,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        key: key,
+        margin: const EdgeInsets.only(bottom: 24),
+        padding: _isMultiSelectMode ? const EdgeInsets.all(8) : EdgeInsets.zero,
+        decoration: _isMultiSelectMode
+            ? BoxDecoration(
+                color: isSelected ? MountMapColors.teal.withValues(alpha: 0.12) : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected ? MountMapColors.teal : textColor.withValues(alpha: 0.1),
+                  width: isSelected ? 2 : 1,
+                ),
+              )
+            : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    if (_isMultiSelectMode) ...[
+                      Checkbox(
+                        value: isSelected,
+                        activeColor: MountMapColors.teal,
+                        onChanged: (val) {
+                          setState(() {
+                            if (val == true) {
+                              _selectedBlockIds.add(block.id);
+                            } else {
+                              _selectedBlockIds.remove(block.id);
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                    ] else ...[
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: Icon(Icons.drag_indicator_rounded, size: 20, color: textColor.withValues(alpha: 0.2)),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    _buildSectionTitle('${_getBlockTypeLabel(block.type).toUpperCase()} $blockNumber', _getIconForType(block.type), textColor),
+                  ],
+                ),
+                if (!_isMultiSelectMode)
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.drive_file_move_outlined, size: 16, color: textColor.withValues(alpha: 0.5)),
+                        tooltip: "Salin atau Pindahkan ke Folder",
+                        onPressed: () => _showMoveOrCopyDialog(provider, node, block),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.copy_rounded, size: 16, color: textColor.withValues(alpha: 0.5)),
+                        tooltip: "Duplikat",
+                        onPressed: () => provider.duplicateDescriptionBlock(node.id, block.id),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                        tooltip: "Hapus",
+                        onPressed: () => provider.removeDescriptionBlock(node.id, block.id),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  _buildSectionTitle('${_getBlockTypeLabel(block.type).toUpperCase()} $blockNumber', _getIconForType(block.type), textColor),
-                ],
-              ),
-              Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.drive_file_move_outlined, size: 16, color: textColor.withValues(alpha: 0.5)),
-                    tooltip: "Salin atau Pindahkan ke Folder",
-                    onPressed: () => _showMoveOrCopyDialog(provider, node, block),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.copy_rounded, size: 16, color: textColor.withValues(alpha: 0.5)),
-                    tooltip: "Duplikat",
-                    onPressed: () => provider.duplicateDescriptionBlock(node.id, block.id),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-                    tooltip: "Hapus",
-                    onPressed: () => provider.removeDescriptionBlock(node.id, block.id),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _buildBlockContent(block, provider, node, textColor, isDark),
-        ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            _buildBlockContent(block, provider, node, textColor, isDark),
+          ],
+        ),
       ),
     );
   }
