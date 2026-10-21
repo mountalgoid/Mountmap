@@ -2774,6 +2774,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     final isSelected = _selectedBlockIds.contains(block.id);
 
     return InkWell(
+      key: key,
       onTap: _isMultiSelectMode
           ? () {
               setState(() {
@@ -2787,7 +2788,6 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
           : null,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        key: key,
         margin: const EdgeInsets.only(bottom: 24),
         padding: _isMultiSelectMode ? const EdgeInsets.all(8) : EdgeInsets.zero,
         decoration: _isMultiSelectMode
