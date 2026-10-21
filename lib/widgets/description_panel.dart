@@ -545,64 +545,93 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
+  String _resolveDirectoryPath(String path) {
+    if (path.contains('primary:')) {
+      final relative = Uri.decodeFull(path.split('primary:').last);
+      return '/storage/emulated/0/$relative';
+    }
+    if (path.contains('primary%3A')) {
+      final relative = Uri.decodeFull(path.split('primary%3A').last);
+      return '/storage/emulated/0/$relative';
+    }
+    return path;
+  }
+
   Future<void> _pickAndAddFolder(MountMapProvider provider) async {
     try {
       String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-      if (selectedDirectory == null || selectedDirectory.isEmpty) return;
 
-      final dir = Directory(selectedDirectory);
-      if (!await dir.exists()) {
-        if (!mounted) return;
-        AestheticToast.show(
-          context,
-          title: "FOLDER TIDAK TERSEDIA",
-          message: "Folder terpilih tidak dapat diakses.",
-          type: ToastType.error,
-        );
-        return;
+      List<File> filesToImport = [];
+      String folderName = "Folder";
+
+      if (selectedDirectory != null && selectedDirectory.isNotEmpty) {
+        final resolvedPath = _resolveDirectoryPath(selectedDirectory);
+        final dir = Directory(resolvedPath);
+        folderName = resolvedPath.split('/').last.replaceAll('/', '');
+        if (folderName.isEmpty) folderName = "Folder";
+
+        if (await dir.exists()) {
+          try {
+            final List<FileSystemEntity> entities = await dir.list(recursive: true).toList();
+            filesToImport = entities.whereType<File>().where((f) {
+              final name = f.path.split('/').last;
+              return !name.startsWith('.');
+            }).toList();
+          } catch (e) {
+            debugPrint("Directory listing restricted by Android SAF: $e");
+          }
+        }
       }
 
-      final folderName = selectedDirectory.split('/').last.replaceAll('/', '');
-      _showLoadingDialog("Memindai folder '$folderName' dan seisi filenya...");
+      // If SAF restriction prevents directory listing or no directory selected/returned empty, fallback to file selection inside folder
+      if (filesToImport.isEmpty) {
+        FilePickerResult? result = await FilePicker.platform.pickFiles(
+          allowMultiple: true,
+          dialogTitle: "Pilih file di dalam folder",
+        );
+        if (result != null && result.files.isNotEmpty) {
+          for (var pf in result.files) {
+            if (pf.path != null) {
+              filesToImport.add(File(pf.path!));
+            }
+          }
+          if (filesToImport.isNotEmpty) {
+            final firstParent = filesToImport.first.parent.path;
+            folderName = firstParent.split('/').last;
+          }
+        }
+      }
 
-      final List<FileSystemEntity> entities = await dir.list(recursive: true).toList();
-      final files = entities.whereType<File>().where((f) {
-        final name = f.path.split('/').last;
-        return !name.startsWith('.');
-      }).toList();
-
-      if (files.isEmpty) {
-        _hideLoadingDialog();
+      if (filesToImport.isEmpty) {
         if (!mounted) return;
         AestheticToast.show(
           context,
-          title: "FOLDER KOSONG",
-          message: "Tidak ada file yang ditemukan dalam folder '$folderName'.",
+          title: "TIDAK ADA FILE",
+          message: "Tidak ada file yang dipilih atau ditemukan dalam folder.",
           type: ToastType.info,
           persistent: true,
         );
         return;
       }
 
-      _hideLoadingDialog();
-      _showLoadingDialog("Mengimpor ${files.length} file dari folder '$folderName'...");
+      _showLoadingDialog("Mengimpor ${filesToImport.length} file dari folder '$folderName'...");
 
       int importedCount = 0;
       int errorCount = 0;
 
-      for (var file in files) {
+      for (var file in filesToImport) {
         try {
-          final relativePath = file.path.substring(selectedDirectory.length).replaceAll(RegExp(r'^[/\\]+'), '');
-          final displayName = "$folderName/$relativePath";
-          final permanentPath = await provider.saveAttachmentFile(file.path, displayName.replaceAll('/', '_'));
+          final fileName = file.path.split('/').last;
+          final displayName = "$folderName/$fileName";
+          final permanentPath = await provider.saveAttachmentFile(file.path, "${folderName}_$fileName");
 
           provider.addDescriptionBlock(
             widget.node.id,
             DescriptionBlock(
-              id: "${DateTime.now().microsecondsSinceEpoch}_${importedCount}_$relativePath",
+              id: "${DateTime.now().microsecondsSinceEpoch}_${importedCount}_$fileName",
               type: BlockType.attachment,
               attachment: AttachmentItem(
-                id: "${DateTime.now().microsecondsSinceEpoch}_${importedCount}_$relativePath",
+                id: "${DateTime.now().microsecondsSinceEpoch}_${importedCount}_$fileName",
                 name: displayName,
                 value: permanentPath,
                 type: 'file',
