@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -240,17 +241,304 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     }
   }
 
-  Future<Directory> _getPublicDownloadDirectory() async {
+  String _sanitizeFolderName(String name) {
+    final sanitized = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+    return sanitized.isEmpty ? 'MountMap' : sanitized;
+  }
+
+  Future<Directory> _getPublicDownloadDirectory({String? nodeFolderName}) async {
+    Directory baseDir;
     if (Platform.isAndroid) {
       final downloadDir = Directory('/storage/emulated/0/Download');
       if (await downloadDir.exists()) {
-        return downloadDir;
+        baseDir = downloadDir;
+      } else {
+        baseDir = await getApplicationDocumentsDirectory();
       }
+    } else {
+      baseDir = await getApplicationDocumentsDirectory();
     }
-    return await getApplicationDocumentsDirectory();
+
+    final safeNodeFolder = _sanitizeFolderName(nodeFolderName ?? widget.node.text);
+    final targetFolder = Directory('${baseDir.path}/MountMap/$safeNodeFolder');
+    if (!await targetFolder.exists()) {
+      await targetFolder.create(recursive: true);
+    }
+    return targetFolder;
   }
 
-  Future<void> _saveFileToDevice(String filePath, String originalName) async {
+  static int _computeCrc32(List<int> data) {
+    int crc = 0xFFFFFFFF;
+    for (var byte in data) {
+      crc ^= byte;
+      for (int i = 0; i < 8; i++) {
+        if ((crc & 1) != 0) {
+          crc = (crc >> 1) ^ 0xEDB88320;
+        } else {
+          crc = crc >> 1;
+        }
+      }
+    }
+    return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+  }
+
+  Future<void> _downloadFolderUncompressed(NodeModel node, DescriptionBlock folderBlock) async {
+    final folderName = folderBlock.content ?? "Folder";
+    final folderBlocks = node.descriptionBlocks.where((b) => b.folderId == folderBlock.id).toList();
+
+    final List<({String name, File file})> filesInFolder = [];
+
+    for (var block in folderBlocks) {
+      if (block.type == BlockType.attachment && block.attachment != null) {
+        final item = block.attachment!;
+        if (item.type == 'file' && item.value.isNotEmpty) {
+          final f = File(item.value);
+          if (await f.exists()) {
+            final name = item.name.isEmpty ? f.path.split('/').last : item.name;
+            filesInFolder.add((name: name, file: f));
+          }
+        }
+      }
+      if ((block.type == BlockType.table || block.type == BlockType.chart) && block.tableData != null) {
+        for (var row in block.tableData!) {
+          for (var cell in row) {
+            if (cell.startsWith(DescriptionBlock.tableFilePrefix)) {
+              final parsed = _parseTableAttachmentValue(cell);
+              if (parsed.value.isNotEmpty) {
+                final f = File(parsed.value);
+                if (await f.exists()) {
+                  filesInFolder.add((name: parsed.name, file: f));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (filesInFolder.isEmpty) {
+      AestheticToast.show(
+        context,
+        title: "FOLDER KOSONG",
+        message: "Tidak ada file fisik yang dapat diunduh di dalam folder '$folderName'.",
+        type: ToastType.info,
+        persistent: true,
+      );
+      return;
+    }
+
+    try {
+      _showLoadingDialog("Menyimpan folder '$folderName' tanpa kompresi...");
+
+      final baseTargetDir = await _getPublicDownloadDirectory(nodeFolderName: node.text);
+      final safeFolderSub = _sanitizeFolderName(folderName);
+      final folderTargetDir = Directory("${baseTargetDir.path}/$safeFolderSub");
+      if (!await folderTargetDir.exists()) {
+        await folderTargetDir.create(recursive: true);
+      }
+
+      int successCount = 0;
+      int failCount = 0;
+
+      for (var fileEntry in filesInFolder) {
+        try {
+          final safeName = fileEntry.name.isEmpty ? fileEntry.file.path.split('/').last : fileEntry.name;
+          String destPath = "${folderTargetDir.path}/$safeName";
+
+          if (await File(destPath).exists()) {
+            final timestamp = DateTime.now().millisecondsSinceEpoch;
+            final nameParts = safeName.split('.');
+            if (nameParts.length > 1) {
+              final ext = nameParts.last;
+              final base = nameParts.sublist(0, nameParts.length - 1).join('.');
+              destPath = "${folderTargetDir.path}/${base}_$timestamp.$ext";
+            } else {
+              destPath = "${folderTargetDir.path}/${safeName}_$timestamp";
+            }
+          }
+
+          await fileEntry.file.copy(destPath);
+          successCount++;
+        } catch (e) {
+          failCount++;
+        }
+      }
+
+      _hideLoadingDialog();
+
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "SIMPAN FOLDER BERHASIL",
+        message: "Berhasil menyimpan $successCount file ke folder perangkat:\n${folderTargetDir.path}${failCount > 0 ? ' ($failCount gagal)' : ''}",
+        type: ToastType.success,
+        persistent: true,
+      );
+    } catch (e) {
+      _hideLoadingDialog();
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "SIMPAN FOLDER GAGAL",
+        message: "Gagal menyimpan folder: $e",
+        type: ToastType.error,
+        persistent: true,
+      );
+    }
+  }
+
+  Future<void> _downloadFolderAsZip(NodeModel node, DescriptionBlock folderBlock) async {
+    final folderName = folderBlock.content ?? "Folder";
+    final folderBlocks = node.descriptionBlocks.where((b) => b.folderId == folderBlock.id).toList();
+
+    final List<({String name, File file})> filesInFolder = [];
+
+    for (var block in folderBlocks) {
+      if (block.type == BlockType.attachment && block.attachment != null) {
+        final item = block.attachment!;
+        if (item.type == 'file' && item.value.isNotEmpty) {
+          final f = File(item.value);
+          if (await f.exists()) {
+            final name = item.name.isEmpty ? f.path.split('/').last : item.name;
+            filesInFolder.add((name: name, file: f));
+          }
+        }
+      }
+      if ((block.type == BlockType.table || block.type == BlockType.chart) && block.tableData != null) {
+        for (var row in block.tableData!) {
+          for (var cell in row) {
+            if (cell.startsWith(DescriptionBlock.tableFilePrefix)) {
+              final parsed = _parseTableAttachmentValue(cell);
+              if (parsed.value.isNotEmpty) {
+                final f = File(parsed.value);
+                if (await f.exists()) {
+                  filesInFolder.add((name: parsed.name, file: f));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (filesInFolder.isEmpty) {
+      AestheticToast.show(
+        context,
+        title: "FOLDER KOSONG",
+        message: "Tidak ada file fisik yang dapat diunduh di dalam folder '$folderName'.",
+        type: ToastType.info,
+        persistent: true,
+      );
+      return;
+    }
+
+    try {
+      _showLoadingDialog("Membuat file Zip untuk folder '$folderName'...");
+
+      final BytesBuilder zipBytes = BytesBuilder();
+      final BytesBuilder cdBytes = BytesBuilder();
+      int localHeaderOffset = 0;
+
+      final now = DateTime.now();
+      final dosTime = (now.hour << 11) | (now.minute << 5) | (now.second >> 1);
+      final dosDate = ((now.year - 1980) << 9) | (now.month << 5) | now.day;
+
+      for (var fileEntry in filesInFolder) {
+        final fileData = await fileEntry.file.readAsBytes();
+        final fileNameBytes = utf8.encode(fileEntry.name.split('/').last);
+        final crc32 = _computeCrc32(fileData);
+        final fileSize = fileData.length;
+
+        // Local Header
+        final ByteData localHeader = ByteData(30);
+        localHeader.setUint32(0, 0x04034b50, Endian.little);
+        localHeader.setUint16(4, 20, Endian.little); // version needed
+        localHeader.setUint16(6, 0, Endian.little); // flags
+        localHeader.setUint16(8, 0, Endian.little); // compression = 0 (Store)
+        localHeader.setUint16(10, dosTime, Endian.little);
+        localHeader.setUint16(12, dosDate, Endian.little);
+        localHeader.setUint32(14, crc32, Endian.little);
+        localHeader.setUint32(18, fileSize, Endian.little);
+        localHeader.setUint32(22, fileSize, Endian.little);
+        localHeader.setUint16(26, fileNameBytes.length, Endian.little);
+        localHeader.setUint16(28, 0, Endian.little); // extra field len
+
+        zipBytes.add(localHeader.buffer.asUint8List());
+        zipBytes.add(fileNameBytes);
+        zipBytes.add(fileData);
+
+        // Central Directory Header
+        final ByteData cdHeader = ByteData(46);
+        cdHeader.setUint32(0, 0x02014b50, Endian.little);
+        cdHeader.setUint16(4, 20, Endian.little); // version made by
+        cdHeader.setUint16(6, 20, Endian.little); // version needed
+        cdHeader.setUint16(8, 0, Endian.little); // flags
+        cdHeader.setUint16(10, 0, Endian.little); // compression
+        cdHeader.setUint16(12, dosTime, Endian.little);
+        cdHeader.setUint16(14, dosDate, Endian.little);
+        cdHeader.setUint32(16, crc32, Endian.little);
+        cdHeader.setUint32(20, fileSize, Endian.little);
+        cdHeader.setUint32(24, fileSize, Endian.little);
+        cdHeader.setUint16(28, fileNameBytes.length, Endian.little);
+        cdHeader.setUint16(30, 0, Endian.little); // extra len
+        cdHeader.setUint16(32, 0, Endian.little); // comment len
+        cdHeader.setUint16(34, 0, Endian.little); // disk num
+        cdHeader.setUint16(36, 0, Endian.little); // internal attr
+        cdHeader.setUint32(38, 0, Endian.little); // external attr
+        cdHeader.setUint32(42, localHeaderOffset, Endian.little);
+
+        cdBytes.add(cdHeader.buffer.asUint8List());
+        cdBytes.add(fileNameBytes);
+
+        localHeaderOffset += 30 + fileNameBytes.length + fileSize;
+      }
+
+      final cdOffset = localHeaderOffset;
+      final cdSize = cdBytes.length;
+
+      // End of Central Directory Header
+      final ByteData eocd = ByteData(22);
+      eocd.setUint32(0, 0x06054b50, Endian.little);
+      eocd.setUint16(4, 0, Endian.little); // disk num
+      eocd.setUint16(6, 0, Endian.little); // cd disk num
+      eocd.setUint16(8, filesInFolder.length, Endian.little); // cd records on disk
+      eocd.setUint16(10, filesInFolder.length, Endian.little); // total cd records
+      eocd.setUint32(12, cdSize, Endian.little);
+      eocd.setUint32(16, cdOffset, Endian.little);
+      eocd.setUint16(20, 0, Endian.little); // comment len
+
+      zipBytes.add(cdBytes.takeBytes());
+      zipBytes.add(eocd.buffer.asUint8List());
+
+      final targetDir = await _getPublicDownloadDirectory(nodeFolderName: node.text);
+      final safeZipName = "${_sanitizeFolderName(folderName)}.zip";
+      final zipFile = File("${targetDir.path}/$safeZipName");
+      await zipFile.writeAsBytes(zipBytes.takeBytes());
+
+      _hideLoadingDialog();
+
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "DOWNLOAD ZIP BERHASIL",
+        message: "Berhasil mengemas ${filesInFolder.length} file ke dalam ZIP utuh:\n${zipFile.path}",
+        type: ToastType.success,
+        persistent: true,
+      );
+    } catch (e) {
+      _hideLoadingDialog();
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "DOWNLOAD ZIP GAGAL",
+        message: "Gagal membuat file Zip: $e",
+        type: ToastType.error,
+        persistent: true,
+      );
+    }
+  }
+
+  Future<void> _saveFileToDevice(String filePath, String originalName, {String? subFolder}) async {
     try {
       final sourceFile = File(filePath);
       if (!await sourceFile.exists()) {
@@ -267,7 +555,15 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
 
       _showLoadingDialog("Sedang menyimpan file '$originalName' ke perangkat...");
 
-      final targetDir = await _getPublicDownloadDirectory();
+      Directory targetDir = await _getPublicDownloadDirectory();
+      if (subFolder != null && subFolder.trim().isNotEmpty) {
+        final safeSubFolder = _sanitizeFolderName(subFolder);
+        targetDir = Directory('${targetDir.path}/$safeSubFolder');
+        if (!await targetDir.exists()) {
+          await targetDir.create(recursive: true);
+        }
+      }
+
       final safeName = originalName.isEmpty ? sourceFile.path.split('/').last : originalName;
       String destPath = "${targetDir.path}/$safeName";
 
@@ -290,7 +586,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       AestheticToast.show(
         context,
         title: "SIMPAN FILE BERHASIL",
-        message: "File '$safeName' berhasil disimpan ke perangkat:\n$destPath",
+        message: "File '$safeName' berhasil disimpan ke folder perangkat:\n$destPath",
         type: ToastType.success,
         persistent: true,
       );
@@ -308,19 +604,29 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
   }
 
   Future<void> _saveAllFilesToDevice(NodeModel node) async {
-    final List<({String path, String name})> filesToSave = [];
+    final List<({String path, String name, String? subFolder})> filesToSave = [];
+
+    // Map folder blocks for subfolder pathing
+    final Map<String, String> folderNames = {};
+    for (var block in node.descriptionBlocks) {
+      if (block.type == BlockType.folder && block.content != null) {
+        folderNames[block.id] = block.content!;
+      }
+    }
 
     for (var item in node.attachments) {
       if (item.type == 'file' && item.value.isNotEmpty) {
-        filesToSave.add((path: item.value, name: item.name));
+        filesToSave.add((path: item.value, name: item.name, subFolder: null));
       }
     }
 
     for (var block in node.descriptionBlocks) {
+      final subFolder = block.folderId != null ? folderNames[block.folderId] : null;
+
       if (block.type == BlockType.attachment && block.attachment != null) {
         final item = block.attachment!;
         if (item.type == 'file' && item.value.isNotEmpty) {
-          filesToSave.add((path: item.value, name: item.name));
+          filesToSave.add((path: item.value, name: item.name, subFolder: subFolder));
         }
       }
       if ((block.type == BlockType.table || block.type == BlockType.chart) && block.tableData != null) {
@@ -329,7 +635,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             if (cell.startsWith(DescriptionBlock.tableFilePrefix)) {
               final parsed = _parseTableAttachmentValue(cell);
               if (parsed.value.isNotEmpty) {
-                filesToSave.add((path: parsed.value, name: parsed.name));
+                filesToSave.add((path: parsed.value, name: parsed.name, subFolder: subFolder));
               }
             }
           }
@@ -351,14 +657,23 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     _showLoadingDialog("Sedang menyimpan ${filesToSave.length} file deskripsi ke perangkat...");
     int successCount = 0;
     int failCount = 0;
-    final targetDir = await _getPublicDownloadDirectory();
+    final baseTargetDir = await _getPublicDownloadDirectory(nodeFolderName: node.text);
 
     for (var fileItem in filesToSave) {
       try {
         final sourceFile = File(fileItem.path);
         if (await sourceFile.exists()) {
+          Directory currentTargetDir = baseTargetDir;
+          if (fileItem.subFolder != null && fileItem.subFolder!.trim().isNotEmpty) {
+            final safeSub = _sanitizeFolderName(fileItem.subFolder!);
+            currentTargetDir = Directory('${baseTargetDir.path}/$safeSub');
+            if (!await currentTargetDir.exists()) {
+              await currentTargetDir.create(recursive: true);
+            }
+          }
+
           final safeName = fileItem.name.isEmpty ? sourceFile.path.split('/').last : fileItem.name;
-          String destPath = "${targetDir.path}/$safeName";
+          String destPath = "${currentTargetDir.path}/$safeName";
 
           if (await File(destPath).exists()) {
             final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -366,9 +681,9 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             if (nameParts.length > 1) {
               final ext = nameParts.last;
               final base = nameParts.sublist(0, nameParts.length - 1).join('.');
-              destPath = "${targetDir.path}/${base}_$timestamp.$ext";
+              destPath = "${currentTargetDir.path}/${base}_$timestamp.$ext";
             } else {
-              destPath = "${targetDir.path}/${safeName}_$timestamp";
+              destPath = "${currentTargetDir.path}/${safeName}_$timestamp";
             }
           }
 
@@ -388,7 +703,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     AestheticToast.show(
       context,
       title: "SIMPAN SEMUA FILE BERHASIL",
-      message: "Berhasil menyimpan $successCount file deskripsi ke folder:\n${targetDir.path}${failCount > 0 ? ' ($failCount gagal)' : ''}",
+      message: "Berhasil menyimpan $successCount file deskripsi beserta struktur foldernya ke:\n${baseTargetDir.path}${failCount > 0 ? ' ($failCount gagal)' : ''}",
       type: ToastType.success,
       persistent: true,
     );
@@ -409,13 +724,69 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     });
   }
 
-  void _addTextItem() {
+  void _addFolderItem() {
+    final provider = Provider.of<MountMapProvider>(context, listen: false);
+    final folderCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: provider.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("Buat Folder Baru", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: folderCtrl,
+          autofocus: true,
+          style: TextStyle(color: provider.textColor),
+          decoration: InputDecoration(
+            labelText: "Nama Folder Deskripsi",
+            labelStyle: TextStyle(color: provider.textColor.withValues(alpha: 0.5)),
+            hintText: "misal: Dokumen Proyek",
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text("BATAL")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: MountMapColors.teal, foregroundColor: Colors.white),
+            onPressed: () {
+              final folderName = folderCtrl.text.trim();
+              if (folderName.isNotEmpty) {
+                final blockId = DateTime.now().millisecondsSinceEpoch.toString();
+                provider.addDescriptionBlock(
+                  widget.node.id,
+                  DescriptionBlock(
+                    id: blockId,
+                    type: BlockType.folder,
+                    content: folderName,
+                    isExpanded: true,
+                  ),
+                );
+                Navigator.pop(dialogCtx);
+                AestheticToast.show(
+                  context,
+                  title: "FOLDER DIBUAT",
+                  message: "Folder '$folderName' berhasil dibuat di deskripsi.",
+                  type: ToastType.success,
+                  persistent: false,
+                );
+              }
+            },
+            child: const Text("BUAT FOLDER"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addTextItem({String? folderId}) {
     final provider = Provider.of<MountMapProvider>(context, listen: false);
     final blockId = DateTime.now().millisecondsSinceEpoch.toString();
     provider.addDescriptionBlock(widget.node.id, DescriptionBlock(
       id: blockId,
       type: BlockType.text,
       content: "",
+      folderId: folderId,
     ));
     setState(() {
       _editingBlockId = blockId;
@@ -451,6 +822,17 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
               onTap: () {
                 Navigator.pop(context);
                 _pickAndAddFile(provider);
+              },
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              leading: const CircleAvatar(backgroundColor: Colors.purpleAccent, child: Icon(Icons.folder_open_rounded, color: Colors.white, size: 20)),
+              title: Text("Pick Local Folder (All Files)", style: TextStyle(color: provider.textColor)),
+              subtitle: Text("Import folder & seisi filenya", style: TextStyle(color: provider.textColor.withValues(alpha: 0.5), fontSize: 10)),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndAddFolder(provider);
               },
             ),
             const SizedBox(height: 8),
@@ -534,7 +916,130 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
-  Future<void> _pickAndAddFile(MountMapProvider provider) async {
+  String _resolveDirectoryPath(String path) {
+    if (path.contains('primary:')) {
+      final relative = Uri.decodeFull(path.split('primary:').last);
+      return '/storage/emulated/0/$relative';
+    }
+    if (path.contains('primary%3A')) {
+      final relative = Uri.decodeFull(path.split('primary%3A').last);
+      return '/storage/emulated/0/$relative';
+    }
+    return path;
+  }
+
+  Future<void> _pickAndAddFolder(MountMapProvider provider, {String? folderId}) async {
+    try {
+      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+
+      List<File> filesToImport = [];
+      String folderName = "Folder";
+
+      if (selectedDirectory != null && selectedDirectory.isNotEmpty) {
+        final resolvedPath = _resolveDirectoryPath(selectedDirectory);
+        final dir = Directory(resolvedPath);
+        folderName = resolvedPath.split('/').last.replaceAll('/', '');
+        if (folderName.isEmpty) folderName = "Folder";
+
+        if (await dir.exists()) {
+          try {
+            final List<FileSystemEntity> entities = await dir.list(recursive: true).toList();
+            filesToImport = entities.whereType<File>().where((f) {
+              final name = f.path.split('/').last;
+              return !name.startsWith('.');
+            }).toList();
+          } catch (e) {
+            debugPrint("Directory listing restricted by Android SAF: $e");
+          }
+        }
+      }
+
+      // If SAF restriction prevents directory listing or no directory selected/returned empty, fallback to file selection inside folder
+      if (filesToImport.isEmpty) {
+        FilePickerResult? result = await FilePicker.platform.pickFiles(
+          allowMultiple: true,
+          dialogTitle: "Pilih file di dalam folder",
+        );
+        if (result != null && result.files.isNotEmpty) {
+          for (var pf in result.files) {
+            if (pf.path != null) {
+              filesToImport.add(File(pf.path!));
+            }
+          }
+          if (filesToImport.isNotEmpty) {
+            final firstParent = filesToImport.first.parent.path;
+            folderName = firstParent.split('/').last;
+          }
+        }
+      }
+
+      if (filesToImport.isEmpty) {
+        if (!mounted) return;
+        AestheticToast.show(
+          context,
+          title: "TIDAK ADA FILE",
+          message: "Tidak ada file yang dipilih atau ditemukan dalam folder.",
+          type: ToastType.info,
+          persistent: true,
+        );
+        return;
+      }
+
+      _showLoadingDialog("Mengimpor ${filesToImport.length} file dari folder '$folderName'...");
+
+      int importedCount = 0;
+      int errorCount = 0;
+
+      for (var file in filesToImport) {
+        try {
+          final fileName = file.path.split('/').last;
+          final displayName = "$folderName/$fileName";
+          final permanentPath = await provider.saveAttachmentFile(file.path, "${folderName}_$fileName");
+
+          provider.addDescriptionBlock(
+            widget.node.id,
+            DescriptionBlock(
+              id: "${DateTime.now().microsecondsSinceEpoch}_${importedCount}_$fileName",
+              type: BlockType.attachment,
+              attachment: AttachmentItem(
+                id: "${DateTime.now().microsecondsSinceEpoch}_${importedCount}_$fileName",
+                name: displayName,
+                value: permanentPath,
+                type: 'file',
+              ),
+              folderId: folderId,
+            ),
+          );
+          importedCount++;
+        } catch (e) {
+          errorCount++;
+        }
+      }
+
+      _hideLoadingDialog();
+
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "FOLDER BERHASIL DIIMPOR",
+        message: "Berhasil menambahkan $importedCount file dari folder '$folderName' ke deskripsi${errorCount > 0 ? ' ($errorCount gagal)' : ''}.",
+        type: ToastType.success,
+        persistent: true,
+      );
+    } catch (e) {
+      _hideLoadingDialog();
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "GAGAL MENGIMPOR FOLDER",
+        message: "Gagal memproses folder: $e",
+        type: ToastType.error,
+        persistent: true,
+      );
+    }
+  }
+
+  Future<void> _pickAndAddFile(MountMapProvider provider, {String? folderId}) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(allowMultiple: true);
       if (result == null || result.files.isEmpty) return;
@@ -555,6 +1060,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
               value: permanentPath,
               type: 'file',
             ),
+            folderId: folderId,
           ));
           addedCount++;
           fileNames.add(file.name);
@@ -1687,44 +2193,53 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
         children: [
           _buildHeader(node, textColor, isDark),
           Flexible(
-            child: ReorderableListView(
-              padding: const EdgeInsets.all(24),
-              onReorder: (oldIndex, newIndex) {
-                if (oldIndex >= node!.descriptionBlocks.length) return;
-                final targetIndex = newIndex > node.descriptionBlocks.length
-                    ? node.descriptionBlocks.length
-                    : newIndex;
-                provider.reorderDescriptionBlock(node.id, oldIndex, targetIndex);
-              },
-              children: [
-                ...node.descriptionBlocks.asMap().entries.map((entry) {
-                  final blockNumber = _getBlockTypeSequence(node!.descriptionBlocks, entry.key);
-                  return _buildBlock(
-                    key: ValueKey(entry.value.id),
-                    entry.value,
-                    provider,
-                    node!,
-                    textColor,
-                    isDark,
-                    entry.key,
-                    blockNumber,
-                  );
-                }),
+            child: () {
+              final topLevelBlocks = node!.descriptionBlocks.where((b) => b.folderId == null).toList();
+              return ReorderableListView(
+                padding: const EdgeInsets.all(24),
+                onReorder: (oldIndex, newIndex) {
+                  if (oldIndex >= topLevelBlocks.length) return;
+                  final targetIndex = newIndex > topLevelBlocks.length ? topLevelBlocks.length : newIndex;
+                  final oldRealIdx = node!.descriptionBlocks.indexOf(topLevelBlocks[oldIndex]);
+                  int newRealIdx = targetIndex < topLevelBlocks.length
+                      ? node.descriptionBlocks.indexOf(topLevelBlocks[targetIndex])
+                      : node.descriptionBlocks.length;
+                  if (oldRealIdx != -1) {
+                    provider.reorderDescriptionBlock(node.id, oldRealIdx, newRealIdx);
+                  }
+                },
+                children: [
+                  ...topLevelBlocks.asMap().entries.map((entry) {
+                    final block = entry.value;
+                    final realIdx = node!.descriptionBlocks.indexOf(block);
+                    final blockNumber = _getBlockTypeSequence(node.descriptionBlocks, realIdx);
+                    return _buildBlock(
+                      key: ValueKey(block.id),
+                      block,
+                      provider,
+                      node,
+                      textColor,
+                      isDark,
+                      entry.key,
+                      blockNumber,
+                    );
+                  }),
 
-                Container(
-                  key: const ValueKey('tags_section'),
-                  padding: const EdgeInsets.only(top: 20, bottom: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionTitle("TAGS", Icons.sell_outlined, textColor),
-                      const SizedBox(height: 12),
-                      _buildTags(node, provider),
-                    ],
+                  Container(
+                    key: const ValueKey('tags_section'),
+                    padding: const EdgeInsets.only(top: 20, bottom: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionTitle("TAGS", Icons.sell_outlined, textColor),
+                        const SizedBox(height: 12),
+                        _buildTags(node, provider),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              );
+            }(),
           ),
           _buildFooter(provider, node),
         ],
@@ -1841,6 +2356,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       case BlockType.attachment: return Icons.attach_file_rounded;
       case BlockType.table: return Icons.table_chart_rounded;
       case BlockType.chart: return Icons.bar_chart_rounded;
+      case BlockType.folder: return Icons.folder_rounded;
     }
   }
 
@@ -1867,6 +2383,8 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
         return 'Table';
       case BlockType.chart:
         return 'Chart';
+      case BlockType.folder:
+        return 'Folder';
     }
   }
 
@@ -1880,7 +2398,140 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
         return _buildTableBlock(block, provider, node, textColor);
       case BlockType.chart:
         return _buildChartBlock(block, provider, node);
+      case BlockType.folder:
+        return _buildFolderBlock(block, provider, node, textColor);
     }
+  }
+
+  Widget _buildFolderBlock(DescriptionBlock block, MountMapProvider provider, NodeModel node, Color textColor) {
+    final folderName = block.content ?? "Folder Deskripsi";
+    final isExpanded = block.isExpanded;
+    final folderBlocks = node.descriptionBlocks.where((b) => b.folderId == block.id).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: MountMapColors.teal.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: MountMapColors.teal.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const CircleAvatar(
+              backgroundColor: MountMapColors.teal,
+              child: Icon(Icons.folder_open_rounded, color: Colors.white, size: 20),
+            ),
+            title: Text(
+              folderName,
+              style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            subtitle: Text(
+              "${folderBlocks.length} item di dalam folder",
+              style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 11),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.download_for_offline_rounded, size: 20, color: MountMapColors.teal),
+                  tooltip: "Opsi Download Folder",
+                  onSelected: (val) {
+                    if (val == 'zip') {
+                      _downloadFolderAsZip(node, block);
+                    } else if (val == 'raw') {
+                      _downloadFolderUncompressed(node, block);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'raw',
+                      child: Row(
+                        children: [
+                          Icon(Icons.folder_copy_rounded, size: 18, color: MountMapColors.teal),
+                          SizedBox(width: 8),
+                          Text('Simpan Folder Biasa (Tanpa ZIP)', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'zip',
+                      child: Row(
+                        children: [
+                          Icon(Icons.archive_rounded, size: 18, color: MountMapColors.violet),
+                          SizedBox(width: 8),
+                          Text('Simpan sebagai File ZIP Utuh', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline_rounded, size: 20, color: MountMapColors.teal),
+                  tooltip: "Tambah File ke Folder ini",
+                  onPressed: () => _pickAndAddFile(provider, folderId: block.id),
+                ),
+                IconButton(
+                  icon: Icon(isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 22, color: textColor),
+                  onPressed: () {
+                    setState(() {
+                      block.isExpanded = !block.isExpanded;
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+          if (isExpanded) ...[
+            const Divider(height: 1, thickness: 0.5),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: folderBlocks.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Center(
+                        child: Text(
+                          "Folder kosong. Gunakan tombol + di atas untuk menambah item.",
+                          style: TextStyle(color: textColor.withValues(alpha: 0.4), fontSize: 11),
+                        ),
+                      ),
+                    )
+                  : ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 280),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: folderBlocks.asMap().entries.map((fEntry) {
+                            final childBlock = fEntry.value;
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 3,
+                                    height: 32,
+                                    color: MountMapColors.teal.withValues(alpha: 0.5),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildBlockContent(childBlock, provider, node, textColor, true),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
+                                    onPressed: () => provider.removeDescriptionBlock(node.id, childBlock.id),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildTextBlock(DescriptionBlock block, MountMapProvider provider, NodeModel node, Color textColor) {
@@ -2737,6 +3388,8 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            _buildActionButton('Buat Folder', Icons.create_new_folder_rounded, _addFolderItem, provider.textColor),
+            const SizedBox(width: 8),
             _buildActionButton('Add Text', Icons.note_add_rounded, _addTextItem, provider.textColor),
             const SizedBox(width: 8),
             _buildActionButton('Add Attachment', Icons.attach_file_rounded, _addAttachmentItem, provider.textColor),

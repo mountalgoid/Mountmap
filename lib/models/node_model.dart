@@ -33,7 +33,7 @@ class AttachmentItem {
   }
 }
 
-enum BlockType { text, attachment, table, chart }
+enum BlockType { text, attachment, table, chart, folder }
 
 class DescriptionBlock {
   static const String tableFilePrefix = '__MM_FILE__:';
@@ -41,10 +41,12 @@ class DescriptionBlock {
 
   String id;
   BlockType type;
-  String? content; // For text
+  String? content; // For text or folder name
   AttachmentItem? attachment; // For attachment
   List<List<String>>? tableData; // For table or chart
   String? chartType; // For chart
+  String? folderId; // Parent folder ID for grouping blocks in folder
+  bool isExpanded; // For folder open/close state
 
   DescriptionBlock({
     required this.id,
@@ -53,6 +55,8 @@ class DescriptionBlock {
     this.attachment,
     this.tableData,
     this.chartType,
+    this.folderId,
+    this.isExpanded = true,
   });
 
   Map<String, dynamic> toJson() {
@@ -63,6 +67,8 @@ class DescriptionBlock {
       'attachment': attachment?.toJson(),
       'tableData': tableData,
       'chartType': chartType,
+      'folderId': folderId,
+      'isExpanded': isExpanded,
     };
   }
 
@@ -79,6 +85,8 @@ class DescriptionBlock {
           ? (json['tableData'] as List).map((row) => List<String>.from(row)).toList()
           : null,
       chartType: json['chartType'],
+      folderId: json['folderId'],
+      isExpanded: json['isExpanded'] ?? true,
     );
   }
 }
