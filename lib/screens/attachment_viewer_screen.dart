@@ -641,7 +641,7 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
 
   Widget _buildMiniToolbar(MountMapProvider provider) {
     final charCount = _textController.text.length;
-    final wordCount = _textController.text.trim().isEmpty ? 0 : RegExp(r'\s+').split(_textController.text.trim()).length;
+    final wordCount = _textController.text.trim().isEmpty ? 0 : _textController.text.trim().split(RegExp(r'\s+')).length;
 
     return Container(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
