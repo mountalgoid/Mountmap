@@ -164,6 +164,10 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
   bool _isLoadingText = false;
   String _lastText = "";
 
+  double _fontSize = 14.0;
+  bool _lineWrap = true;
+  double _playbackSpeed = 1.0;
+
   bool _isAudioPlaying = false;
   Duration _audioDuration = Duration.zero;
   Duration _audioPosition = Duration.zero;
@@ -523,37 +527,63 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
 
                   // Text Editor
                   Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Container(
-                        constraints: BoxConstraints(minWidth: MediaQuery.of(context).size.width - 110),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                        child: IntrinsicWidth(
-                          child: TextField(
-                            controller: _textController,
-                            undoController: _undoController,
-                            focusNode: _editorFocus,
-                            maxLines: null,
-                            autofocus: true,
-                            onChanged: _handleAutoIndent,
-                            style: TextStyle(
-                              color: provider.textColor,
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                              height: 1.6,
-                              letterSpacing: 0.8,
+                    child: _lineWrap
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            child: TextField(
+                              controller: _textController,
+                              undoController: _undoController,
+                              focusNode: _editorFocus,
+                              maxLines: null,
+                              autofocus: true,
+                              onChanged: _handleAutoIndent,
+                              style: TextStyle(
+                                color: provider.textColor,
+                                fontSize: _fontSize,
+                                fontFamily: 'monospace',
+                                height: 1.6,
+                                letterSpacing: 0.8,
+                              ),
+                              decoration: InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.zero,
+                                hintText: "Mulai menulis...",
+                                hintStyle: TextStyle(color: provider.textColor.withValues(alpha: 0.24)),
+                              ),
                             ),
-                            decoration: InputDecoration(
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
-                              hintText: "Mulai menulis...",
-                              hintStyle: TextStyle(color: provider.textColor.withValues(alpha: 0.24)),
+                          )
+                        : SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Container(
+                              constraints: BoxConstraints(minWidth: MediaQuery.of(context).size.width - 110),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                              child: IntrinsicWidth(
+                                child: TextField(
+                                  controller: _textController,
+                                  undoController: _undoController,
+                                  focusNode: _editorFocus,
+                                  maxLines: null,
+                                  autofocus: true,
+                                  onChanged: _handleAutoIndent,
+                                  style: TextStyle(
+                                    color: provider.textColor,
+                                    fontSize: _fontSize,
+                                    fontFamily: 'monospace',
+                                    height: 1.6,
+                                    letterSpacing: 0.8,
+                                  ),
+                                  decoration: InputDecoration(
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    hintText: "Mulai menulis...",
+                                    hintStyle: TextStyle(color: provider.textColor.withValues(alpha: 0.24)),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    ),
                   ),
                 ],
               ),
@@ -610,6 +640,9 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
   }
 
   Widget _buildMiniToolbar(MountMapProvider provider) {
+    final charCount = _textController.text.length;
+    final wordCount = _textController.text.trim().isEmpty ? 0 : RegExp(r'\s+').split(_textController.text.trim()).length;
+
     return Container(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       decoration: BoxDecoration(
@@ -619,6 +652,39 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            color: provider.textColor.withValues(alpha: 0.03),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "$charCount karakter | $wordCount kata",
+                  style: TextStyle(color: provider.textColor.withValues(alpha: 0.6), fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.zoom_out_rounded, size: 16, color: MountMapColors.teal),
+                      tooltip: "Kecilkan Teks",
+                      onPressed: () => setState(() => _fontSize = (_fontSize - 1).clamp(10.0, 28.0)),
+                    ),
+                    Text("${_fontSize.toInt()}pt", style: TextStyle(color: provider.textColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.zoom_in_rounded, size: 16, color: MountMapColors.teal),
+                      tooltip: "Besarkan Teks",
+                      onPressed: () => setState(() => _fontSize = (_fontSize + 1).clamp(10.0, 28.0)),
+                    ),
+                    IconButton(
+                      icon: Icon(_lineWrap ? Icons.wrap_text_rounded : Icons.notes_rounded, size: 16, color: MountMapColors.teal),
+                      tooltip: _lineWrap ? "Matikan Auto Wrap" : "Aktifkan Auto Wrap",
+                      onPressed: () => setState(() => _lineWrap = !_lineWrap),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Padding(
@@ -899,18 +965,26 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
         margin: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
           color: provider.cardColor,
-          borderRadius: BorderRadius.circular(25),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: MountMapColors.teal.withValues(alpha: 0.2)),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 10)),
           ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.music_note_rounded, size: 80, color: MountMapColors.teal),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: MountMapColors.teal.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.music_note_rounded, size: 72, color: MountMapColors.teal),
+            ),
             const SizedBox(height: 20),
             Text(widget.item.name, style: TextStyle(color: provider.textColor, fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-            const SizedBox(height: 30),
+            const SizedBox(height: 20),
             Slider(
               activeColor: MountMapColors.teal,
               inactiveColor: provider.textColor.withValues(alpha: 0.1),
@@ -935,6 +1009,14 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 IconButton(
+                  icon: const Icon(Icons.replay_10_rounded, size: 32, color: MountMapColors.teal),
+                  onPressed: () {
+                    final target = (_audioPosition.inSeconds - 10).clamp(0, _audioDuration.inSeconds);
+                    _audioPlayer.seek(Duration(seconds: target));
+                  },
+                ),
+                const SizedBox(width: 16),
+                IconButton(
                   iconSize: 64,
                   icon: Icon(_isAudioPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded),
                   color: MountMapColors.teal,
@@ -946,7 +1028,34 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
                     }
                   },
                 ),
+                const SizedBox(width: 16),
+                IconButton(
+                  icon: const Icon(Icons.forward_10_rounded, size: 32, color: MountMapColors.teal),
+                  onPressed: () {
+                    final target = (_audioPosition.inSeconds + 10).clamp(0, _audioDuration.inSeconds);
+                    _audioPlayer.seek(Duration(seconds: target));
+                  },
+                ),
               ],
+            ),
+            const SizedBox(height: 12),
+            PopupMenuButton<double>(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: MountMapColors.teal.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text("Kecepatan: ${_playbackSpeed}x", style: const TextStyle(color: MountMapColors.teal, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+              onSelected: (speed) {
+                setState(() => _playbackSpeed = speed);
+                _audioPlayer.setPlaybackRate(speed);
+              },
+              itemBuilder: (context) => [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => PopupMenuItem(
+                value: s,
+                child: Text("${s}x", style: TextStyle(color: s == _playbackSpeed ? MountMapColors.teal : provider.textColor, fontWeight: s == _playbackSpeed ? FontWeight.bold : FontWeight.normal)),
+              )).toList(),
             ),
           ],
         ),
