@@ -1299,83 +1299,128 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     }
   }
 
+  static const Map<String, String> kNewFileTemplates = {
+    'TXT (.txt)': '',
+    'Markdown (.md)': '# Judul Catatan\n\n- Poin 1\n- Poin 2\n\n```json\n{\n  "status": "success"\n}\n```\n',
+    'CSV (.csv)': 'Nama,Kategori,Nilai,Status\nDokumen 1,Laporan,100000,Selesai\nDokumen 2,Catatan,50000,Proses\n',
+    'JSON (.json)': '{\n  "title": "Catatan Baru",\n  "version": "1.0",\n  "tags": ["mountmap", "note"]\n}\n',
+  };
+
   void _showCreateFileDialog(MountMapProvider provider, {String? folderId}) {
-    final nameCtrl = TextEditingController();
+    final nameCtrl = TextEditingController(text: "catatan.txt");
+    String selectedTemplateKey = 'TXT (.txt)';
 
     showDialog(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: provider.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text("Create New File", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: nameCtrl,
-          style: TextStyle(color: provider.textColor),
-          decoration: InputDecoration(
-            labelText: "Filename with extension",
-            labelStyle: TextStyle(color: provider.textColor.withValues(alpha: 0.5)),
-            hintText: "note.txt",
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: provider.cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text("Create New File", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                style: TextStyle(color: provider.textColor),
+                decoration: InputDecoration(
+                  labelText: "Filename with extension",
+                  labelStyle: TextStyle(color: provider.textColor.withValues(alpha: 0.5)),
+                  hintText: "note.txt",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text("Pilih Template Bawaan:", style: TextStyle(color: provider.textColor.withValues(alpha: 0.7), fontSize: 12, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: kNewFileTemplates.keys.map((key) {
+                  final isSelected = selectedTemplateKey == key;
+                  return ChoiceChip(
+                    label: Text(key, style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : provider.textColor)),
+                    selected: isSelected,
+                    selectedColor: MountMapColors.teal,
+                    backgroundColor: provider.textColor.withValues(alpha: 0.05),
+                    onSelected: (val) {
+                      setDialogState(() {
+                        selectedTemplateKey = key;
+                        if (key.contains('.md')) {
+                          nameCtrl.text = "catatan.md";
+                        } else if (key.contains('.csv')) {
+                          nameCtrl.text = "data.csv";
+                        } else if (key.contains('.json')) {
+                          nameCtrl.text = "config.json";
+                        } else {
+                          nameCtrl.text = "catatan.txt";
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text("CANCEL")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: MountMapColors.teal, foregroundColor: Colors.white),
-            onPressed: () async {
-              if (nameCtrl.text.isNotEmpty) {
-                final fileName = nameCtrl.text.trim();
-                Navigator.pop(dialogCtx);
-                try {
-                  _showLoadingDialog("Sedang membuat file baru '$fileName'...");
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text("CANCEL")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: MountMapColors.teal, foregroundColor: Colors.white),
+              onPressed: () async {
+                if (nameCtrl.text.isNotEmpty) {
+                  final fileName = nameCtrl.text.trim();
+                  final initialContent = kNewFileTemplates[selectedTemplateKey] ?? "";
+                  Navigator.pop(dialogCtx);
+                  try {
+                    _showLoadingDialog("Sedang membuat file baru '$fileName'...");
 
-                  final dir = await getApplicationDocumentsDirectory();
-                  final fileDir = Directory('${dir.path}/MountAttachments');
-                  if (!await fileDir.exists()) await fileDir.create();
+                    final dir = await getApplicationDocumentsDirectory();
+                    final fileDir = Directory('${dir.path}/MountAttachments');
+                    if (!await fileDir.exists()) await fileDir.create();
 
-                  final file = File('${fileDir.path}/$fileName');
-                  if (!await file.exists()) {
-                    await file.writeAsString("");
-                  }
+                    final file = File('${fileDir.path}/$fileName');
+                    await file.writeAsString(initialContent);
 
-                  provider.addDescriptionBlock(widget.node.id, DescriptionBlock(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    type: BlockType.attachment,
-                    attachment: AttachmentItem(
+                    provider.addDescriptionBlock(widget.node.id, DescriptionBlock(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      name: fileName,
-                      value: file.path,
-                      type: 'file',
-                    ),
-                    folderId: folderId,
-                  ));
+                      type: BlockType.attachment,
+                      attachment: AttachmentItem(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: fileName,
+                        value: file.path,
+                        type: 'file',
+                      ),
+                      folderId: folderId,
+                    ));
 
-                  _hideLoadingDialog();
+                    _hideLoadingDialog();
 
-                  if (!mounted) return;
-                  AestheticToast.show(
-                    context,
-                    title: "FILE DIBUAT",
-                    message: "Berhasil membuat dan menempelkan file '$fileName' di deskripsi.",
-                    type: ToastType.success,
-                    persistent: true,
-                  );
-                } catch (e) {
-                  _hideLoadingDialog();
-                  if (!mounted) return;
-                  AestheticToast.show(
-                    context,
-                    title: "GAGAL MEMBUAT FILE",
-                    message: "Gagal membuat file: $e",
-                    type: ToastType.error,
-                    persistent: true,
-                  );
+                    if (!mounted) return;
+                    AestheticToast.show(
+                      context,
+                      title: "FILE DIBUAT",
+                      message: "Berhasil membuat file '$fileName'. Tap untuk langsung mengedit seisi filenya.",
+                      type: ToastType.success,
+                      persistent: true,
+                    );
+                  } catch (e) {
+                    _hideLoadingDialog();
+                    if (!mounted) return;
+                    AestheticToast.show(
+                      context,
+                      title: "GAGAL MEMBUAT FILE",
+                      message: "Gagal membuat file: $e",
+                      type: ToastType.error,
+                      persistent: true,
+                    );
+                  }
                 }
-              }
-            },
-            child: const Text("CREATE"),
-          ),
-        ],
+              },
+              child: const Text("CREATE"),
+            ),
+          ],
+        ),
       ),
     );
   }

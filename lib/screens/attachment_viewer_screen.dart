@@ -207,13 +207,29 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
     _webController!.loadRequest(Uri.parse(widget.item.value));
   }
 
+  bool _isTextBasedFile(String ext) {
+    return ext.endsWith('.txt') ||
+        ext.endsWith('.md') ||
+        ext.endsWith('.csv') ||
+        ext.endsWith('.json') ||
+        ext.endsWith('.html') ||
+        ext.endsWith('.xml') ||
+        ext.endsWith('.yaml') ||
+        ext.endsWith('.yml') ||
+        ext.endsWith('.log') ||
+        ext.endsWith('.dart') ||
+        ext.endsWith('.js') ||
+        ext.endsWith('.css') ||
+        ext.endsWith('.py');
+  }
+
   void _initViewer() {
     final ext = widget.item.value.toLowerCase();
     if (ext.endsWith('.mp4') || ext.endsWith('.mp5') || ext.endsWith('.mov') || ext.endsWith('.mkv')) {
       _initVideo();
     } else if (ext.endsWith('.mp3') || ext.endsWith('.wav') || ext.endsWith('.m4a')) {
       _initAudio();
-    } else if (ext.endsWith('.txt')) {
+    } else if (_isTextBasedFile(ext)) {
       _loadTextFile();
     }
   }
@@ -280,28 +296,36 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
   Widget build(BuildContext context) {
     final provider = Provider.of<MountMapProvider>(context);
     final ext = widget.item.value.toLowerCase();
-    final isTxt = ext.endsWith('.txt');
+    final isTextFile = _isTextBasedFile(ext);
     final isLink = widget.item.type == 'link';
 
     return Scaffold(
       backgroundColor: provider.backgroundColor,
       appBar: AppBar(
-        title: Text(widget.item.name, style: TextStyle(fontSize: 16, color: provider.textColor)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.item.name, style: TextStyle(fontSize: 15, color: provider.textColor, fontWeight: FontWeight.bold)),
+            Text(widget.item.value, style: TextStyle(fontSize: 10, color: provider.textColor.withValues(alpha: 0.5)), overflow: TextOverflow.ellipsis),
+          ],
+        ),
         backgroundColor: provider.cardColor,
         iconTheme: IconThemeData(color: provider.textColor),
         elevation: 0,
         actions: [
-          if (isTxt)
+          if (isTextFile) ...[
             _isSaving
               ? const Center(child: Padding(padding: EdgeInsets.only(right: 16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MountMapColors.teal))))
               : IconButton(
                   icon: const Icon(Icons.save_rounded, color: MountMapColors.teal),
+                  tooltip: "Simpan Perubahan File",
                   onPressed: _saveTextFile,
                 ),
+          ],
         ],
       ),
       body: _buildBody(ext, provider),
-      bottomNavigationBar: isTxt ? _buildMiniToolbar(provider) : (isLink ? _buildWebToolbar(provider) : null),
+      bottomNavigationBar: isTextFile ? _buildMiniToolbar(provider) : (isLink ? _buildWebToolbar(provider) : null),
     );
   }
 
@@ -337,7 +361,7 @@ class _AttachmentViewerScreenState extends State<AttachmentViewerScreen> {
     }
     if (ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png') || ext.endsWith('.webp')) {
       return _buildImageViewer();
-    } else if (ext.endsWith('.txt')) {
+    } else if (_isTextBasedFile(ext)) {
       return _buildTextViewer(provider);
     } else if (ext.endsWith('.mp4') || ext.endsWith('.mp5') || ext.endsWith('.mov') || ext.endsWith('.mkv')) {
       return _buildVideoViewer();
