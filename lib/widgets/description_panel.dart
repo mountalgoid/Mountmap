@@ -456,6 +456,17 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             const SizedBox(height: 8),
             ListTile(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              leading: const CircleAvatar(backgroundColor: Colors.purpleAccent, child: Icon(Icons.folder_open_rounded, color: Colors.white, size: 20)),
+              title: Text("Pick Local Folder (All Files)", style: TextStyle(color: provider.textColor)),
+              subtitle: Text("Import folder & seisi filenya", style: TextStyle(color: provider.textColor.withValues(alpha: 0.5), fontSize: 10)),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndAddFolder(provider);
+              },
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               leading: const CircleAvatar(backgroundColor: Colors.orangeAccent, child: Icon(Icons.add_box_rounded, color: Colors.white, size: 20)),
               title: Text("Create New File", style: TextStyle(color: provider.textColor)),
               onTap: () {
@@ -532,6 +543,99 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
         ],
       ),
     );
+  }
+
+  Future<void> _pickAndAddFolder(MountMapProvider provider) async {
+    try {
+      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+      if (selectedDirectory == null || selectedDirectory.isEmpty) return;
+
+      final dir = Directory(selectedDirectory);
+      if (!await dir.exists()) {
+        if (!mounted) return;
+        AestheticToast.show(
+          context,
+          title: "FOLDER TIDAK TERSEDIA",
+          message: "Folder terpilih tidak dapat diakses.",
+          type: ToastType.error,
+        );
+        return;
+      }
+
+      final folderName = selectedDirectory.split('/').last.replaceAll('/', '');
+      _showLoadingDialog("Memindai folder '$folderName' dan seisi filenya...");
+
+      final List<FileSystemEntity> entities = await dir.list(recursive: true).toList();
+      final files = entities.whereType<File>().where((f) {
+        final name = f.path.split('/').last;
+        return !name.startsWith('.');
+      }).toList();
+
+      if (files.isEmpty) {
+        _hideLoadingDialog();
+        if (!mounted) return;
+        AestheticToast.show(
+          context,
+          title: "FOLDER KOSONG",
+          message: "Tidak ada file yang ditemukan dalam folder '$folderName'.",
+          type: ToastType.info,
+          persistent: true,
+        );
+        return;
+      }
+
+      _hideLoadingDialog();
+      _showLoadingDialog("Mengimpor ${files.length} file dari folder '$folderName'...");
+
+      int importedCount = 0;
+      int errorCount = 0;
+
+      for (var file in files) {
+        try {
+          final relativePath = file.path.substring(selectedDirectory.length).replaceAll(RegExp(r'^[/\\]+'), '');
+          final displayName = "$folderName/$relativePath";
+          final permanentPath = await provider.saveAttachmentFile(file.path, displayName.replaceAll('/', '_'));
+
+          provider.addDescriptionBlock(
+            widget.node.id,
+            DescriptionBlock(
+              id: "${DateTime.now().microsecondsSinceEpoch}_${importedCount}_$relativePath",
+              type: BlockType.attachment,
+              attachment: AttachmentItem(
+                id: "${DateTime.now().microsecondsSinceEpoch}_${importedCount}_$relativePath",
+                name: displayName,
+                value: permanentPath,
+                type: 'file',
+              ),
+            ),
+          );
+          importedCount++;
+        } catch (e) {
+          errorCount++;
+        }
+      }
+
+      _hideLoadingDialog();
+
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "FOLDER BERHASIL DIIMPOR",
+        message: "Berhasil menambahkan $importedCount file dari folder '$folderName' ke deskripsi${errorCount > 0 ? ' ($errorCount gagal)' : ''}.",
+        type: ToastType.success,
+        persistent: true,
+      );
+    } catch (e) {
+      _hideLoadingDialog();
+      if (!mounted) return;
+      AestheticToast.show(
+        context,
+        title: "GAGAL MENGIMPOR FOLDER",
+        message: "Gagal memproses folder: $e",
+        type: ToastType.error,
+        persistent: true,
+      );
+    }
   }
 
   Future<void> _pickAndAddFile(MountMapProvider provider) async {
