@@ -202,6 +202,9 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
   int _tableGeneration = 0;
   bool _progressDialogShown = false;
 
+  bool _isMultiSelectMode = false;
+  final Set<String> _selectedBlockIds = {};
+
   void _showLoadingDialog(String message) {
     _progressDialogShown = true;
     final provider = Provider.of<MountMapProvider>(context, listen: false);
@@ -724,7 +727,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     });
   }
 
-  void _addFolderItem() {
+  void _addFolderItem({String? folderId}) {
     final provider = Provider.of<MountMapProvider>(context, listen: false);
     final folderCtrl = TextEditingController();
 
@@ -741,7 +744,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
           decoration: InputDecoration(
             labelText: "Nama Folder Deskripsi",
             labelStyle: TextStyle(color: provider.textColor.withValues(alpha: 0.5)),
-            hintText: "misal: Dokumen Proyek",
+            hintText: "misal: Sub-Folder Dokumen",
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
@@ -760,6 +763,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                     type: BlockType.folder,
                     content: folderName,
                     isExpanded: true,
+                    folderId: folderId,
                   ),
                 );
                 Navigator.pop(dialogCtx);
@@ -773,6 +777,211 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
               }
             },
             child: const Text("BUAT FOLDER"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMoveOrCopyDialog(MountMapProvider provider, NodeModel node, DescriptionBlock sourceBlock) {
+    final allFolderBlocks = node.descriptionBlocks.where((b) => b.type == BlockType.folder && b.id != sourceBlock.id).toList();
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: provider.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("Salin / Pindahkan Item", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Pilih folder tujuan:", style: TextStyle(color: provider.textColor.withValues(alpha: 0.7), fontSize: 12)),
+            const SizedBox(height: 12),
+            ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              leading: const Icon(Icons.home_outlined, color: MountMapColors.teal),
+              title: Text("Utama (Luar Folder)", style: TextStyle(color: provider.textColor, fontSize: 13)),
+              onTap: () {
+                Navigator.pop(dialogCtx);
+                _executeMoveOrCopy(provider, node, sourceBlock, targetFolderId: null);
+              },
+            ),
+            const Divider(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: allFolderBlocks.map((folderBlock) {
+                    final accentColor = folderBlock.folderColor != null ? Color(folderBlock.folderColor!) : MountMapColors.teal;
+                    return ListTile(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      leading: Icon(Icons.folder, color: accentColor),
+                      title: Text(folderBlock.content ?? "Folder", style: TextStyle(color: provider.textColor, fontSize: 13)),
+                      onTap: () {
+                        Navigator.pop(dialogCtx);
+                        _executeMoveOrCopy(provider, node, sourceBlock, targetFolderId: folderBlock.id);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _copyFolderRecursive(MountMapProvider provider, NodeModel node, DescriptionBlock sourceFolderBlock, String? targetFolderId, bool includeChildren) {
+    final Map<String, String> idMap = {};
+
+    final folderCopy = DescriptionBlock.fromJson(sourceFolderBlock.toJson());
+    final newFolderId = "${sourceFolderBlock.id}_copy_${DateTime.now().microsecondsSinceEpoch}";
+    idMap[sourceFolderBlock.id] = newFolderId;
+    folderCopy.id = newFolderId;
+    folderCopy.folderId = targetFolderId;
+    provider.addDescriptionBlock(node.id, folderCopy);
+
+    if (includeChildren) {
+      void copyChildren(String oldParentId, String newParentId) {
+        final children = node.descriptionBlocks.where((b) => b.folderId == oldParentId).toList();
+        for (var child in children) {
+          final childCopy = DescriptionBlock.fromJson(child.toJson());
+          final newChildId = "${child.id}_copy_${DateTime.now().microsecondsSinceEpoch}";
+          childCopy.id = newChildId;
+          childCopy.folderId = newParentId;
+          provider.addDescriptionBlock(node.id, childCopy);
+
+          if (child.type == BlockType.folder) {
+            copyChildren(child.id, newChildId);
+          }
+        }
+      }
+
+      copyChildren(sourceFolderBlock.id, newFolderId);
+    }
+  }
+
+  void _moveFolderRecursive(MountMapProvider provider, NodeModel node, DescriptionBlock sourceFolderBlock, String? targetFolderId, bool includeChildren) {
+    sourceFolderBlock.folderId = targetFolderId;
+
+    if (!includeChildren) {
+      final directChildren = node.descriptionBlocks.where((b) => b.folderId == sourceFolderBlock.id).toList();
+      for (var child in directChildren) {
+        child.folderId = targetFolderId;
+      }
+    }
+
+    provider.updatePeak(node.id, descriptionBlocks: List.from(node.descriptionBlocks));
+  }
+
+  void _executeMoveOrCopy(MountMapProvider provider, NodeModel node, DescriptionBlock sourceBlock, {required String? targetFolderId}) {
+    final isFolder = sourceBlock.type == BlockType.folder;
+
+    if (isFolder) {
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          backgroundColor: provider.cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text("Opsi Folder: '${sourceBlock.content ?? 'Folder'}'", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Pilih mode penyalinan atau pemindahan folder:", style: TextStyle(color: provider.textColor.withValues(alpha: 0.8), fontSize: 12)),
+              const SizedBox(height: 16),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                leading: const Icon(Icons.folder_outlined, color: MountMapColors.teal),
+                title: Text("Hanya Folder (Tanpa File/Isi)", style: TextStyle(color: provider.textColor, fontSize: 13, fontWeight: FontWeight.bold)),
+                subtitle: Text("Hanya menyalin/memindahkan struktur foldernya saja", style: TextStyle(color: provider.textColor.withValues(alpha: 0.5), fontSize: 10)),
+                onTap: () {
+                  Navigator.pop(dialogCtx);
+                  _confirmActionType(provider, node, sourceBlock, targetFolderId, includeChildren: false);
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                leading: const Icon(Icons.folder_zip_rounded, color: MountMapColors.violet),
+                title: Text("Folder Beserta Seisi Filenya", style: TextStyle(color: provider.textColor, fontSize: 13, fontWeight: FontWeight.bold)),
+                subtitle: Text("Menyalin/memindahkan folder beserta seluruh file & sub-foldernya", style: TextStyle(color: provider.textColor.withValues(alpha: 0.5), fontSize: 10)),
+                onTap: () {
+                  Navigator.pop(dialogCtx);
+                  _confirmActionType(provider, node, sourceBlock, targetFolderId, includeChildren: true);
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      _confirmActionType(provider, node, sourceBlock, targetFolderId, includeChildren: false);
+    }
+  }
+
+  void _confirmActionType(MountMapProvider provider, NodeModel node, DescriptionBlock sourceBlock, String? targetFolderId, {required bool includeChildren}) {
+    final isFolder = sourceBlock.type == BlockType.folder;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: provider.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("Pilih Aksi", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Text(
+          isFolder
+              ? (includeChildren ? "Menyalin/memindahkan folder beserta seluruh isinya?" : "Menyalin/memindahkan struktur folder saja?")
+              : "Apakah Anda ingin memindahkan atau menyalin item ini?",
+          style: TextStyle(color: provider.textColor.withValues(alpha: 0.8), fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              // COPY ACTION
+              if (isFolder) {
+                _copyFolderRecursive(provider, node, sourceBlock, targetFolderId, includeChildren);
+              } else {
+                final copy = DescriptionBlock.fromJson(sourceBlock.toJson());
+                copy.id = "${sourceBlock.id}_copy_${DateTime.now().microsecondsSinceEpoch}";
+                copy.folderId = targetFolderId;
+                provider.addDescriptionBlock(node.id, copy);
+              }
+              AestheticToast.show(
+                context,
+                title: "ITEM DISALIN",
+                message: "Item berhasil disalin ke folder tujuan.",
+                type: ToastType.success,
+                persistent: false,
+              );
+            },
+            child: const Text("SALIN (COPY)"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: MountMapColors.teal, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              // MOVE ACTION
+              if (isFolder) {
+                _moveFolderRecursive(provider, node, sourceBlock, targetFolderId, includeChildren);
+              } else {
+                setState(() {
+                  sourceBlock.folderId = targetFolderId;
+                });
+                provider.updatePeak(node.id, descriptionBlocks: List.from(node.descriptionBlocks));
+              }
+              AestheticToast.show(
+                context,
+                title: "ITEM DIPINDAHKAN",
+                message: "Item berhasil dipindahkan ke folder tujuan.",
+                type: ToastType.success,
+                persistent: false,
+              );
+            },
+            child: const Text("PINDAHKAN (MOVE)"),
           ),
         ],
       ),
@@ -1090,87 +1299,133 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     }
   }
 
-  void _showCreateFileDialog(MountMapProvider provider) {
-    final nameCtrl = TextEditingController();
+  static const Map<String, String> kNewFileTemplates = {
+    'TXT (.txt)': '',
+    'Markdown (.md)': '# Judul Catatan\n\n- Poin 1\n- Poin 2\n\n```json\n{\n  "status": "success"\n}\n```\n',
+    'CSV (.csv)': 'Nama,Kategori,Nilai,Status\nDokumen 1,Laporan,100000,Selesai\nDokumen 2,Catatan,50000,Proses\n',
+    'JSON (.json)': '{\n  "title": "Catatan Baru",\n  "version": "1.0",\n  "tags": ["mountmap", "note"]\n}\n',
+  };
+
+  void _showCreateFileDialog(MountMapProvider provider, {String? folderId}) {
+    final nameCtrl = TextEditingController(text: "catatan.txt");
+    String selectedTemplateKey = 'TXT (.txt)';
 
     showDialog(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: provider.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text("Create New File", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: nameCtrl,
-          style: TextStyle(color: provider.textColor),
-          decoration: InputDecoration(
-            labelText: "Filename with extension",
-            labelStyle: TextStyle(color: provider.textColor.withValues(alpha: 0.5)),
-            hintText: "note.txt",
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: provider.cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text("Create New File", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                style: TextStyle(color: provider.textColor),
+                decoration: InputDecoration(
+                  labelText: "Filename with extension",
+                  labelStyle: TextStyle(color: provider.textColor.withValues(alpha: 0.5)),
+                  hintText: "note.txt",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text("Pilih Template Bawaan:", style: TextStyle(color: provider.textColor.withValues(alpha: 0.7), fontSize: 12, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: kNewFileTemplates.keys.map((key) {
+                  final isSelected = selectedTemplateKey == key;
+                  return ChoiceChip(
+                    label: Text(key, style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : provider.textColor)),
+                    selected: isSelected,
+                    selectedColor: MountMapColors.teal,
+                    backgroundColor: provider.textColor.withValues(alpha: 0.05),
+                    onSelected: (val) {
+                      setDialogState(() {
+                        selectedTemplateKey = key;
+                        if (key.contains('.md')) {
+                          nameCtrl.text = "catatan.md";
+                        } else if (key.contains('.csv')) {
+                          nameCtrl.text = "data.csv";
+                        } else if (key.contains('.json')) {
+                          nameCtrl.text = "config.json";
+                        } else {
+                          nameCtrl.text = "catatan.txt";
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text("CANCEL")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: MountMapColors.teal, foregroundColor: Colors.white),
-            onPressed: () async {
-              if (nameCtrl.text.isNotEmpty) {
-                final fileName = nameCtrl.text.trim();
-                Navigator.pop(dialogCtx);
-                try {
-                  _showLoadingDialog("Sedang membuat file baru '$fileName'...");
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text("CANCEL")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: MountMapColors.teal, foregroundColor: Colors.white),
+              onPressed: () async {
+                if (nameCtrl.text.isNotEmpty) {
+                  final fileName = nameCtrl.text.trim();
+                  final initialContent = kNewFileTemplates[selectedTemplateKey] ?? "";
+                  Navigator.pop(dialogCtx);
+                  try {
+                    _showLoadingDialog("Sedang membuat file baru '$fileName'...");
 
-                  final dir = await getApplicationDocumentsDirectory();
-                  final fileDir = Directory('${dir.path}/MountAttachments');
-                  if (!await fileDir.exists()) await fileDir.create();
+                    final dir = await getApplicationDocumentsDirectory();
+                    final fileDir = Directory('${dir.path}/MountAttachments');
+                    if (!await fileDir.exists()) await fileDir.create();
 
-                  final file = File('${fileDir.path}/$fileName');
-                  if (!await file.exists()) {
-                    await file.writeAsString("");
-                  }
+                    final file = File('${fileDir.path}/$fileName');
+                    await file.writeAsString(initialContent);
 
-                  provider.addDescriptionBlock(widget.node.id, DescriptionBlock(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    type: BlockType.attachment,
-                    attachment: AttachmentItem(
+                    provider.addDescriptionBlock(widget.node.id, DescriptionBlock(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      name: fileName,
-                      value: file.path,
-                      type: 'file',
-                    ),
-                  ));
+                      type: BlockType.attachment,
+                      attachment: AttachmentItem(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: fileName,
+                        value: file.path,
+                        type: 'file',
+                      ),
+                      folderId: folderId,
+                    ));
 
-                  _hideLoadingDialog();
+                    _hideLoadingDialog();
 
-                  if (!mounted) return;
-                  AestheticToast.show(
-                    context,
-                    title: "FILE DIBUAT",
-                    message: "Berhasil membuat dan menempelkan file '$fileName' di deskripsi.",
-                    type: ToastType.success,
-                    persistent: true,
-                  );
-                } catch (e) {
-                  _hideLoadingDialog();
-                  if (!mounted) return;
-                  AestheticToast.show(
-                    context,
-                    title: "GAGAL MEMBUAT FILE",
-                    message: "Gagal membuat file: $e",
-                    type: ToastType.error,
-                    persistent: true,
-                  );
+                    if (!mounted) return;
+                    AestheticToast.show(
+                      context,
+                      title: "FILE DIBUAT",
+                      message: "Berhasil membuat file '$fileName'. Tap untuk langsung mengedit seisi filenya.",
+                      type: ToastType.success,
+                      persistent: true,
+                    );
+                  } catch (e) {
+                    _hideLoadingDialog();
+                    if (!mounted) return;
+                    AestheticToast.show(
+                      context,
+                      title: "GAGAL MEMBUAT FILE",
+                      message: "Gagal membuat file: $e",
+                      type: ToastType.error,
+                      persistent: true,
+                    );
+                  }
                 }
-              }
-            },
-            child: const Text("CREATE"),
-          ),
-        ],
+              },
+              child: const Text("CREATE"),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  void _addTableItem() {
+  void _addTableItem({String? folderId}) {
     final provider = Provider.of<MountMapProvider>(context, listen: false);
     _showTemplatePickerModal(
       context: context,
@@ -1182,6 +1437,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
           id: blockId,
           type: BlockType.table,
           tableData: template.data.map((r) => List<String>.from(r)).toList(),
+          folderId: folderId,
         ));
       },
       onSelectBlank: () {
@@ -1193,13 +1449,14 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             ['Column 1', 'Column 2'],
             ['Data 1', 'Data 2'],
           ],
+          folderId: folderId,
         ));
         _showTableEditor(provider, widget.node.id, blockId);
       },
     );
   }
 
-  void _addChartItem() {
+  void _addChartItem({String? folderId}) {
     final provider = Provider.of<MountMapProvider>(context, listen: false);
     _showTemplatePickerModal(
       context: context,
@@ -1212,10 +1469,11 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
           type: BlockType.chart,
           chartType: template.recommendedChartType,
           tableData: template.data.map((r) => List<String>.from(r)).toList(),
+          folderId: folderId,
         ));
       },
       onSelectBlank: () {
-        _showChartTypePicker(context, provider);
+        _showChartTypePicker(context, provider, folderId: folderId);
       },
     );
   }
@@ -1394,7 +1652,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
-  void _showChartTypePicker(BuildContext context, MountMapProvider provider) {
+  void _showChartTypePicker(BuildContext context, MountMapProvider provider, {String? folderId}) {
     final Map<String, List<Map<String, dynamic>>> categories = {
       "FLOW & RELATIONAL": [
         {"name": "Alluvial Diagram", "icon": Icons.waterfall_chart_rounded},
@@ -1482,7 +1740,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                           return InkWell(
                             onTap: () {
                               Navigator.pop(context);
-                              _createChartBlock(provider, chart['name']);
+                              _createChartBlock(provider, chart['name'], folderId: folderId);
                             },
                             child: Container(
                               decoration: BoxDecoration(
@@ -1524,7 +1782,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
-  void _createChartBlock(MountMapProvider provider, String chartType) {
+  void _createChartBlock(MountMapProvider provider, String chartType, {String? folderId}) {
     final blockId = DateTime.now().millisecondsSinceEpoch.toString();
 
     List<List<String>> initialData = [
@@ -1558,6 +1816,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
       type: BlockType.chart,
       chartType: chartType,
       tableData: initialData,
+      folderId: folderId,
     ));
 
     _showTableEditor(provider, widget.node.id, blockId, isChart: true);
@@ -2247,7 +2506,137 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     );
   }
 
+  void _executeBatchMoveOrCopy(MountMapProvider provider, NodeModel node, {required bool isCopy}) {
+    if (_selectedBlockIds.isEmpty) return;
+
+    final allFolderBlocks = node.descriptionBlocks.where((b) => b.type == BlockType.folder && !_selectedBlockIds.contains(b.id)).toList();
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: provider.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(isCopy ? "Salin ${_selectedBlockIds.length} Item" : "Pindahkan ${_selectedBlockIds.length} Item", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Pilih folder tujuan:", style: TextStyle(color: provider.textColor.withValues(alpha: 0.7), fontSize: 12)),
+            const SizedBox(height: 12),
+            ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              leading: const Icon(Icons.home_outlined, color: MountMapColors.teal),
+              title: Text("Utama (Luar Folder)", style: TextStyle(color: provider.textColor, fontSize: 13)),
+              onTap: () {
+                Navigator.pop(dialogCtx);
+                _applyBatchMoveOrCopy(provider, node, targetFolderId: null, isCopy: isCopy);
+              },
+            ),
+            const Divider(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: allFolderBlocks.map((folderBlock) {
+                    final accentColor = folderBlock.folderColor != null ? Color(folderBlock.folderColor!) : MountMapColors.teal;
+                    return ListTile(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      leading: Icon(Icons.folder, color: accentColor),
+                      title: Text(folderBlock.content ?? "Folder", style: TextStyle(color: provider.textColor, fontSize: 13)),
+                      onTap: () {
+                        Navigator.pop(dialogCtx);
+                        _applyBatchMoveOrCopy(provider, node, targetFolderId: folderBlock.id, isCopy: isCopy);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _applyBatchMoveOrCopy(MountMapProvider provider, NodeModel node, {required String? targetFolderId, required bool isCopy}) {
+    final blocksToProcess = node.descriptionBlocks.where((b) => _selectedBlockIds.contains(b.id)).toList();
+
+    if (isCopy) {
+      for (var sourceBlock in blocksToProcess) {
+        final copy = DescriptionBlock.fromJson(sourceBlock.toJson());
+        copy.id = "${sourceBlock.id}_copy_${DateTime.now().microsecondsSinceEpoch}";
+        copy.folderId = targetFolderId;
+        provider.addDescriptionBlock(node.id, copy);
+      }
+      AestheticToast.show(
+        context,
+        title: "BATCH COPY BERHASIL",
+        message: "Berhasil menyalin ${blocksToProcess.length} item ke folder tujuan.",
+        type: ToastType.success,
+        persistent: false,
+      );
+    } else {
+      for (var sourceBlock in blocksToProcess) {
+        sourceBlock.folderId = targetFolderId;
+      }
+      provider.updatePeak(node.id, descriptionBlocks: List.from(node.descriptionBlocks));
+      AestheticToast.show(
+        context,
+        title: "BATCH MOVE BERHASIL",
+        message: "Berhasil memindahkan ${blocksToProcess.length} item ke folder tujuan.",
+        type: ToastType.success,
+        persistent: false,
+      );
+    }
+
+    setState(() {
+      _selectedBlockIds.clear();
+      _isMultiSelectMode = false;
+    });
+  }
+
+  void _executeBatchDelete(MountMapProvider provider, NodeModel node) {
+    if (_selectedBlockIds.isEmpty) return;
+
+    final count = _selectedBlockIds.length;
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: provider.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("Hapus $count Item", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Text("Apakah Anda yakin ingin menghapus $count item terpilih dari deskripsi?", style: TextStyle(color: provider.textColor.withValues(alpha: 0.8), fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text("BATAL")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              for (var id in _selectedBlockIds) {
+                provider.removeDescriptionBlock(node.id, id);
+              }
+              setState(() {
+                _selectedBlockIds.clear();
+                _isMultiSelectMode = false;
+              });
+              AestheticToast.show(
+                context,
+                title: "BATCH DELETE BERHASIL",
+                message: "Berhasil menghapus $count item dari deskripsi.",
+                type: ToastType.success,
+                persistent: false,
+              );
+            },
+            child: const Text("HAPUS SEMUA"),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHeader(NodeModel node, Color textColor, bool isDark) {
+    final provider = Provider.of<MountMapProvider>(context, listen: false);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 16, 20),
       decoration: BoxDecoration(
@@ -2263,29 +2652,101 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
           top: Radius.circular(24),
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: Text(
-              node.text.toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.5,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _isMultiSelectMode
+                      ? "${_selectedBlockIds.length} ITEM TERPILIH"
+                      : node.text.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
+              IconButton(
+                icon: Icon(_isMultiSelectMode ? Icons.deselect_rounded : Icons.checklist_rtl_rounded, color: Colors.white),
+                tooltip: _isMultiSelectMode ? "Selesai Pilih Banyak" : "Pilih Beberapa Item",
+                onPressed: () {
+                  setState(() {
+                    _isMultiSelectMode = !_isMultiSelectMode;
+                    if (!_isMultiSelectMode) _selectedBlockIds.clear();
+                  });
+                },
+              ),
+              if (!_isMultiSelectMode) ...[
+                IconButton(
+                  icon: const Icon(Icons.download_for_offline_rounded, color: Colors.white),
+                  tooltip: "Simpan Semua File Deskripsi ke Perangkat",
+                  onPressed: () => _saveAllFilesToDevice(node),
+                ),
+              ],
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+                onPressed: widget.onClose,
+              ),
+            ],
+          ),
+          if (_isMultiSelectMode) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white54),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.select_all_rounded, size: 16),
+                  label: const Text("Pilih Semua", style: TextStyle(fontSize: 11)),
+                  onPressed: () {
+                    setState(() {
+                      _selectedBlockIds.addAll(node.descriptionBlocks.map((b) => b.id));
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white54),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: const Text("Salin", style: TextStyle(fontSize: 11)),
+                  onPressed: () => _executeBatchMoveOrCopy(provider, node, isCopy: true),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white54),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.drive_file_move_rounded, size: 16),
+                  label: const Text("Pindah", style: TextStyle(fontSize: 11)),
+                  onPressed: () => _executeBatchMoveOrCopy(provider, node, isCopy: false),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.redAccent),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
+                  label: const Text("Hapus", style: TextStyle(fontSize: 11, color: Colors.redAccent)),
+                  onPressed: () => _executeBatchDelete(provider, node),
+                ),
+              ],
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.download_for_offline_rounded, color: Colors.white),
-            tooltip: "Simpan Semua File Deskripsi ke Perangkat",
-            onPressed: () => _saveAllFilesToDevice(node),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded, color: Colors.white),
-            onPressed: widget.onClose,
-          ),
+          ],
         ],
       ),
     );
@@ -2310,42 +2771,94 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
   }
 
   Widget _buildBlock(DescriptionBlock block, MountMapProvider provider, NodeModel node, Color textColor, bool isDark, int index, int blockNumber, {required Key key}) {
-    return Container(
+    final isSelected = _selectedBlockIds.contains(block.id);
+
+    return InkWell(
       key: key,
-      margin: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  ReorderableDragStartListener(
-                    index: index,
-                    child: Icon(Icons.drag_indicator_rounded, size: 20, color: textColor.withValues(alpha: 0.2)),
+      onTap: _isMultiSelectMode
+          ? () {
+              setState(() {
+                if (isSelected) {
+                  _selectedBlockIds.remove(block.id);
+                } else {
+                  _selectedBlockIds.add(block.id);
+                }
+              });
+            }
+          : null,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 24),
+        padding: _isMultiSelectMode ? const EdgeInsets.all(8) : EdgeInsets.zero,
+        decoration: _isMultiSelectMode
+            ? BoxDecoration(
+                color: isSelected ? MountMapColors.teal.withValues(alpha: 0.12) : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected ? MountMapColors.teal : textColor.withValues(alpha: 0.1),
+                  width: isSelected ? 2 : 1,
+                ),
+              )
+            : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    if (_isMultiSelectMode) ...[
+                      Checkbox(
+                        value: isSelected,
+                        activeColor: MountMapColors.teal,
+                        onChanged: (val) {
+                          setState(() {
+                            if (val == true) {
+                              _selectedBlockIds.add(block.id);
+                            } else {
+                              _selectedBlockIds.remove(block.id);
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                    ] else ...[
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: Icon(Icons.drag_indicator_rounded, size: 20, color: textColor.withValues(alpha: 0.2)),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    _buildSectionTitle('${_getBlockTypeLabel(block.type).toUpperCase()} $blockNumber', _getIconForType(block.type), textColor),
+                  ],
+                ),
+                if (!_isMultiSelectMode)
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.drive_file_move_outlined, size: 16, color: textColor.withValues(alpha: 0.5)),
+                        tooltip: "Salin atau Pindahkan ke Folder",
+                        onPressed: () => _showMoveOrCopyDialog(provider, node, block),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.copy_rounded, size: 16, color: textColor.withValues(alpha: 0.5)),
+                        tooltip: "Duplikat",
+                        onPressed: () => provider.duplicateDescriptionBlock(node.id, block.id),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                        tooltip: "Hapus",
+                        onPressed: () => provider.removeDescriptionBlock(node.id, block.id),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  _buildSectionTitle('${_getBlockTypeLabel(block.type).toUpperCase()} $blockNumber', _getIconForType(block.type), textColor),
-                ],
-              ),
-              Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.copy_rounded, size: 16, color: textColor.withValues(alpha: 0.5)),
-                    onPressed: () => provider.duplicateDescriptionBlock(node.id, block.id),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-                    onPressed: () => provider.removeDescriptionBlock(node.id, block.id),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _buildBlockContent(block, provider, node, textColor, isDark),
-        ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            _buildBlockContent(block, provider, node, textColor, isDark),
+          ],
+        ),
       ),
     );
   }
@@ -2403,25 +2916,88 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
     }
   }
 
+  static final List<({String name, Color color})> kFolderColorPresets = [
+    (name: 'Teal', color: MountMapColors.teal),
+    (name: 'Violet', color: MountMapColors.violet),
+    (name: 'Indigo', color: Colors.indigoAccent),
+    (name: 'Amber', color: Colors.amber),
+    (name: 'Emerald', color: Colors.tealAccent),
+    (name: 'Coral', color: Colors.deepOrangeAccent),
+    (name: 'Crimson', color: Colors.redAccent),
+    (name: 'Cyan', color: Colors.cyanAccent),
+  ];
+
+  void _showFolderColorPicker(MountMapProvider provider, NodeModel node, DescriptionBlock folderBlock) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: provider.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("Pilih Warna Folder", style: TextStyle(color: provider.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: kFolderColorPresets.map((preset) {
+            final isSelected = folderBlock.folderColor == preset.color.toARGB32();
+            return InkWell(
+              onTap: () {
+                setState(() {
+                  folderBlock.folderColor = preset.color.toARGB32();
+                });
+                provider.updateDescriptionBlock(node.id, folderBlock.id);
+                Navigator.pop(dialogCtx);
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: preset.color.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSelected ? preset.color : preset.color.withValues(alpha: 0.3),
+                    width: isSelected ? 2.5 : 1,
+                  ),
+                ),
+                child: Center(
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: preset.color,
+                      shape: BoxShape.circle,
+                    ),
+                    child: isSelected ? const Icon(Icons.check, size: 14, color: Colors.white) : null,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFolderBlock(DescriptionBlock block, MountMapProvider provider, NodeModel node, Color textColor) {
     final folderName = block.content ?? "Folder Deskripsi";
     final isExpanded = block.isExpanded;
     final folderBlocks = node.descriptionBlocks.where((b) => b.folderId == block.id).toList();
+    final accentColor = block.folderColor != null ? Color(block.folderColor!) : MountMapColors.teal;
 
     return Container(
       decoration: BoxDecoration(
-        color: MountMapColors.teal.withValues(alpha: 0.05),
+        color: accentColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: MountMapColors.teal.withValues(alpha: 0.2)),
+        border: Border.all(color: accentColor.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            leading: const CircleAvatar(
-              backgroundColor: MountMapColors.teal,
-              child: Icon(Icons.folder_open_rounded, color: Colors.white, size: 20),
+            leading: CircleAvatar(
+              backgroundColor: accentColor,
+              child: const Icon(Icons.folder_open_rounded, color: Colors.white, size: 20),
             ),
             title: Text(
               folderName,
@@ -2435,7 +3011,51 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
               mainAxisSize: MainAxisSize.min,
               children: [
                 PopupMenuButton<String>(
-                  icon: const Icon(Icons.download_for_offline_rounded, size: 20, color: MountMapColors.teal),
+                  icon: Icon(Icons.add_circle_outline_rounded, size: 22, color: accentColor),
+                  tooltip: "Tambah Item ke Folder Ini",
+                  onSelected: (val) {
+                    if (val == 'file') {
+                      _pickAndAddFile(provider, folderId: block.id);
+                    } else if (val == 'folder') {
+                      _addFolderItem(folderId: block.id);
+                    } else if (val == 'table') {
+                      _addTableItem(folderId: block.id);
+                    } else if (val == 'chart') {
+                      _addChartItem(folderId: block.id);
+                    } else if (val == 'create_file') {
+                      _showCreateFileDialog(provider, folderId: block.id);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'file',
+                      child: Row(children: [Icon(Icons.upload_file, size: 18, color: MountMapColors.teal), SizedBox(width: 8), Text('Pick Local File', style: TextStyle(fontSize: 12))]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'folder',
+                      child: Row(children: [Icon(Icons.create_new_folder_rounded, size: 18, color: MountMapColors.teal), SizedBox(width: 8), Text('Buat Sub-Folder', style: TextStyle(fontSize: 12))]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'table',
+                      child: Row(children: [Icon(Icons.table_chart_rounded, size: 18, color: MountMapColors.violet), SizedBox(width: 8), Text('Tambah Tabel', style: TextStyle(fontSize: 12))]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'chart',
+                      child: Row(children: [Icon(Icons.bar_chart_rounded, size: 18, color: MountMapColors.violet), SizedBox(width: 8), Text('Tambah Chart', style: TextStyle(fontSize: 12))]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'create_file',
+                      child: Row(children: [Icon(Icons.add_box_rounded, size: 18, color: Colors.orangeAccent), SizedBox(width: 8), Text('Create New File', style: TextStyle(fontSize: 12))]),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: Icon(Icons.palette_outlined, size: 20, color: accentColor),
+                  tooltip: "Kustomisasi Warna Folder",
+                  onPressed: () => _showFolderColorPicker(provider, node, block),
+                ),
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.download_for_offline_rounded, size: 20, color: accentColor),
                   tooltip: "Opsi Download Folder",
                   onSelected: (val) {
                     if (val == 'zip') {
@@ -2468,11 +3088,6 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                   ],
                 ),
                 IconButton(
-                  icon: const Icon(Icons.add_circle_outline_rounded, size: 20, color: MountMapColors.teal),
-                  tooltip: "Tambah File ke Folder ini",
-                  onPressed: () => _pickAndAddFile(provider, folderId: block.id),
-                ),
-                IconButton(
                   icon: Icon(isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 22, color: textColor),
                   onPressed: () {
                     setState(() {
@@ -2484,7 +3099,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
             ),
           ),
           if (isExpanded) ...[
-            const Divider(height: 1, thickness: 0.5),
+            Divider(height: 1, thickness: 0.5, color: accentColor.withValues(alpha: 0.2)),
             Padding(
               padding: const EdgeInsets.all(12),
               child: folderBlocks.isEmpty
@@ -2510,7 +3125,7 @@ class _ProfessionalDescriptionPanelState extends State<ProfessionalDescriptionPa
                                   Container(
                                     width: 3,
                                     height: 32,
-                                    color: MountMapColors.teal.withValues(alpha: 0.5),
+                                    color: accentColor.withValues(alpha: 0.6),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
